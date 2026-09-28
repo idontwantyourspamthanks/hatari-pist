@@ -30,6 +30,10 @@
                        (bit0: video, bit1: input). Sent only after a valid
                        AUTH. Nothing is pushed until it arrives.
     IDE->Hatari KEY:   'K', u8 ST scancode, u8 down(1)/up(0).
+    IDE->Hatari MOUSE: 'M', s16 dx (LE), s16 dy (LE), u8 buttons
+                       (bit0: left down, bit1: right down — absolute state,
+                       not events). Deltas feed the IKBD's relative-mouse
+                       accumulator; button state mirrors the SDL path.
     Hatari->IDE FRAME: u32 magic 0x46524D31, u32 w, u32 h, u32 pitch, u32 seq,
                        u32 bpp, u32 rmask, u32 gmask, u32 bmask,
                        then pitch*h bytes (h rows of the ST screen area only;
@@ -377,6 +381,24 @@ static void OnMessage(void)
 	{
 		IKBD_PressSTKey(inbuf[1], inbuf[2] != 0);
 	}
+	else if (inbuf[0] == 'M')
+	{
+		/* relative deltas into the IKBD accumulator (the path
+		 * Main_HandleMouseMotion feeds after its display scaling; PiST
+		 * scales its side, so none happens here), buttons as state */
+		int16_t dx = (int16_t)(inbuf[1] | (inbuf[2] << 8));
+		int16_t dy = (int16_t)(inbuf[3] | (inbuf[4] << 8));
+		KeyboardProcessor.Mouse.dx += dx;
+		KeyboardProcessor.Mouse.dy += dy;
+		if (inbuf[5] & 1)
+			Keyboard.bLButtonDown |= BUTTON_MOUSE;
+		else
+			Keyboard.bLButtonDown &= ~BUTTON_MOUSE;
+		if (inbuf[5] & 2)
+			Keyboard.bRButtonDown |= BUTTON_MOUSE;
+		else
+			Keyboard.bRButtonDown &= ~BUTTON_MOUSE;
+	}
 	else if (inbuf[0] == 'P' && memcmp(inbuf, "PSH1", 4) == 0)
 	{
 		uint32_t version, caps;
@@ -418,7 +440,8 @@ void PistMedia_PollInput(void)
 				return;
 			}
 			need = (inbuf[0] == 'P') ? HELLO_BYTES
-			     : (inbuf[0] == 'K') ? 3 : 0;
+			     : (inbuf[0] == 'K') ? 3
+			     : (inbuf[0] == 'M') ? 6 : 0;
 			if (need == 0)
 			{
 				Log_Printf(LOG_WARN, "pist-media: bad message 0x%02x, dropping\n",
