@@ -20,13 +20,21 @@
   a socket that never sees one (including a loopback self-connect, where the
   client's ephemeral port collided with the server port) is never streamed to.
 
-  Protocol v1 (little-endian):
-    IDE->Hatari HELLO: 'P','S','H','1', u32 version (=1), u32 caps (bit0: video).
+  Protocol v2 (little-endian):
+    Hatari->IDE AUTH:  'P','S','A','1', token[16] — sent immediately after
+                       connect, proving this is the process PiST spawned
+                       (the token travels via PIST_MEDIA_TOKEN in the env).
+                       The IDE closes anything whose first message is not a
+                       matching AUTH and says nothing until one arrives.
+    IDE->Hatari HELLO: 'P','S','H','1', u32 version (=2), u32 caps
+                       (bit0: video, bit1: input). Sent only after a valid
+                       AUTH. Nothing is pushed until it arrives.
     IDE->Hatari KEY:   'K', u8 ST scancode, u8 down(1)/up(0).
     Hatari->IDE FRAME: u32 magic 0x46524D31, u32 w, u32 h, u32 pitch, u32 seq,
                        u32 bpp, u32 rmask, u32 gmask, u32 bmask,
                        then pitch*h bytes (h rows of the ST screen area only;
-                       pitch may exceed w*4).
+                       pitch may exceed w*4). The magic is compared as a u32
+                       value, so its bytes on the wire are 31 4D 52 46.
 
   Sends never block emulation: a frame that cannot go out whole is dropped.
   A partial frame is never abandoned mid-stream — its remainder is buffered
@@ -129,6 +137,34 @@ static void Disconnect(void)
 	pending_len = pending_off = 0;
 }
 
+
+/* protocol v2: the fork proves it is the process PiST spawned by sending
+ * 'PSA1' + the 16-byte token PiST passed in the environment. 20 bytes. */
+static void SendAuth(void)
+{
+	uint8_t msg[20] = {'P', 'S', 'A', '1'};
+	const char *hex = getenv("PIST_MEDIA_TOKEN");
+
+	if (!hex || strlen(hex) != 32)
+	{
+		Log_Printf(LOG_WARN, "pist-media: no PIST_MEDIA_TOKEN in the "
+		           "environment; the IDE will not answer\n");
+		return;
+	}
+	for (int i = 0; i < 16; i++)
+	{
+		unsigned int byte;
+		if (sscanf(hex + 2 * i, "%2x", &byte) != 1)
+		{
+			Log_Printf(LOG_WARN, "pist-media: malformed PIST_MEDIA_TOKEN\n");
+			return;
+		}
+		msg[4 + i] = (uint8_t)byte;
+	}
+	if (send(media_fd, msg, sizeof(msg), MSG_DONTWAIT) != (ssize_t)sizeof(msg))
+		Log_Printf(LOG_WARN, "pist-media: could not send AUTH\n");
+}
+
 static void Connect(void)
 {
 	struct sockaddr_in addr, local;
@@ -185,6 +221,12 @@ static void Connect(void)
 	}
 
 	Log_Printf(LOG_INFO, "pist-media: connected to 127.0.0.1:%d\n", media_port);
+
+	/* authenticate to the IDE before anything else is said. The token
+	 * arrives from PiST via the environment (PIST_MEDIA_TOKEN, 32 hex
+	 * chars); without it the IDE never sends HELLO and the channel stays
+	 * silent — an impostor listener gets nothing. */
+	SendAuth();
 }
 
 /* non-blocking write; returns bytes consumed (0 on EAGAIN), -1 on error */
