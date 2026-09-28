@@ -1,0 +1,6 @@
+; AHCC project file for SCC serial tester
+.C [-iinclude]
+scc_ser.tos
+=
+../startup.s
+scc_ser.c

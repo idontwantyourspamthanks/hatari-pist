@@ -1,0 +1,8 @@
+; AHCC project file for Atari key tester
+.C [-iinclude]
+keytest.prg
+=
+ahcstart.o
+keytest.c
+ahccstdi.lib
+ahccgem.lib

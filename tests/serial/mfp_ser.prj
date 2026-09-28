@@ -1,0 +1,6 @@
+; AHCC project file for MFP serial tester
+.C [-iinclude]
+mfp_ser.tos
+=
+../startup.s
+mfp_ser.c
