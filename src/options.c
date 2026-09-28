@@ -1152,8 +1152,18 @@ bool Opt_ParseParameters(int argc, const char * const argv[])
 			break;
 
 		case OPT_FASTFORWARD:
+		{
+			const bool wasFastForward = ConfigureParams.System.bFastForward;
 			ok = Opt_Bool(argv[++i], OPT_FASTFORWARD, &ConfigureParams.System.bFastForward);
+			/* hatari-pist: leaving fast-forward through setopt — the IDE drops
+			 * the boot turbo this way at the first stop — must resync the
+			 * sound ring exactly like the shortcut key does, or the media
+			 * channel streams the stale span over the program's first
+			 * real-time instants */
+			if (ok && wasFastForward && !ConfigureParams.System.bFastForward)
+				Sound_BufferIndexNeedReset = true;
 			break;
+		}
 
 		case OPT_AUTOSTART:
 			if (!(ok = INF_SetAutoStart(argv[++i], OPT_AUTOSTART)))
