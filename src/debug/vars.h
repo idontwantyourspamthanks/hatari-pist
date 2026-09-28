@@ -56,4 +56,8 @@ extern int Vars_List(int nArgc, char *psArgv[]);
 extern uint32_t Vars_GetAesOpcode(void);
 extern uint32_t Vars_GetVdiOpcode(void);
 
+/* Remote debugging: query data for variable [0..n].
+	Returns true if variable found */
+extern bool Vars_QueryVariable(uint32_t position, const var_addr_t **result);
+
 #endif

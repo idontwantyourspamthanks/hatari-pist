@@ -1492,3 +1492,12 @@ void DmaSnd_Info(FILE *fp, uint32_t dummy)
 	fprintf(fp, "$FF8922.w : Microwire Data     : %04x\n", IoMem_ReadWord(0xff8922));
 	fprintf(fp, "$FF8924.w : Microwire Mask     : %04x\n", IoMem_ReadWord(0xff8924));
 }
+
+void DmaSnd_RemoteDebugSync(void)
+{
+	/* Esnure regs are updated in iomem */
+	DmaSnd_FrameCountHigh_ReadByte();
+	DmaSnd_FrameCountMed_ReadByte();
+	DmaSnd_FrameCountLow_ReadByte();
+	IoMem_WriteByte(0xff8921, dma.soundMode);
+}

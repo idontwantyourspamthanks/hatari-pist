@@ -64,6 +64,8 @@ static int parseFiles;
 /* to which directory to change after (potentially recursed) scripts parsing finishes */
 static char *finalDir;
 
+/* Function to read incoming remote debugger commands (set when a socket is attached) */
+static DebugUI_ProcessRemoteCommands remoteDebugcmdCallback = NULL;
 
 /**
  * Save/Restore snapshot of debugging session variables
@@ -527,6 +529,25 @@ static int DebugUI_QuitEmu(int nArgc, char *psArgv[])
 	return DEBUGGER_END;
 }
 
+
+/**
+ * Command: Force Debug Exception Mask
+ */
+static int DebugUI_RdbExceptionMask(int nArgc, char *psArgv[])
+{
+	const char *errstr;
+
+	if (nArgc != 2)
+		return DebugUI_PrintCmdHelp(psArgv[0]);
+
+	errstr = Log_SetExceptionDebugMask(psArgv[1]);
+	if (!errstr)
+		ExceptionDebugMask = ConfigureParams.Debugger.nExceptionDebugMask;
+	else
+		fprintf(stderr, "Cannot parse exception mask: %s\n", errstr);
+
+	return DEBUGGER_CMDDONE;
+}
 
 /**
  * Print help text for one command
@@ -1091,6 +1112,12 @@ static const dbgcommand_t uicommand[] =
 	  "quit emulator",
 	  "[exit value]\n"
 	  "\tLeave debugger and quit emulator with given exit value.",
+	  false },
+	{ DebugUI_RdbExceptionMask, NULL,
+	  "rdb_exc", "",
+	  "set Exception Mask (Remote Debug support)",
+	  "<exception mask string>\n"
+	  "\tSet exceptions which trigger debugger break and force debug support.",
 	  false }
 };
 
@@ -1162,6 +1189,11 @@ void DebugUI_UnInit(void)
  */
 bool DebugUI_DoQuitQuery(const char *info)
 {
+	/* if we are running in a Remote Debug context, assume the
+	   user does want to continue. */
+	if (remoteDebugcmdCallback)
+		return false;
+
 	char input[8];
 	fprintf(stderr, "--- q to exit %s, enter to continue --- ", info);
 	if (fgets(input, sizeof(input), stdin) == NULL ||
@@ -1237,39 +1269,52 @@ void DebugUI(debug_reason_t reason)
 	DebugCpu_InitSession();
 	DebugDsp_InitSession();
 	Symbols_LoadCurrentProgram();
-	DebugInfo_ShowSessionInfo();
-
-	/* override paused message so that user knows to look into console
-	 * on how to continue in case he invoked the debugger by accident.
-	 */
-	Statusbar_AddMessage("Console Debugger", 100);
-	Statusbar_Update(sdlscrn, true);
 
 	/* disable normal GUI alerts while on console */
 	alertLevel = Log_SetAlertLevel(LOG_FATAL);
 
-	cmdret = DEBUGGER_CMDDONE;
-	do
+	if (remoteDebugcmdCallback)
 	{
-		/* Read command from the keyboard and give previous
-		 * command for freeing / adding to history
+		/* Replacement loop for the console debugger,
+		 * for when single-stepping or breakpointing has occurred.
 		 */
-		psCmd = DebugUI_GetCommand(psCmd);
-		if (!psCmd)
-			break;
 
-		/* returns new expression expanded string */
-		if (!(expCmd = DebugUI_EvaluateExpressions(psCmd)))
-			continue;
-
-		/* Parse and execute the command string */
-		cmdret = DebugUI_ParseCommand(expCmd);
-		free(expCmd);
+		/* Pass control to remote debugging */
+		(void) remoteDebugcmdCallback();
 	}
-	while (cmdret != DEBUGGER_END);
+	else
+	{
+		DebugInfo_ShowSessionInfo();
 
-	/* free exit command */
-	DebugUI_FreeCommand(psCmd);
+		/* override paused message so that user knows to look into console
+		* on how to continue in case he invoked the debugger by accident.
+		*/
+		Statusbar_AddMessage("Console Debugger", 100);
+		Statusbar_Update(sdlscrn, true);
+
+		cmdret = DEBUGGER_CMDDONE;
+		do
+		{
+			/* Read command from the keyboard and give previous
+			* command for freeing / adding to history
+			*/
+			psCmd = DebugUI_GetCommand(psCmd);
+			if (!psCmd)
+				break;
+
+			/* returns new expression expanded string */
+			if (!(expCmd = DebugUI_EvaluateExpressions(psCmd)))
+				continue;
+
+			/* Parse and execute the command string */
+			cmdret = DebugUI_ParseCommand(expCmd);
+			free(expCmd);
+		}
+		while (cmdret != DEBUGGER_END);
+
+		/* free exit command */
+		DebugUI_FreeCommand(psCmd);
+	}
 
 	Log_SetAlertLevel(alertLevel);
 
@@ -1440,4 +1485,20 @@ void DebugUI_Exceptions(int nr, long pc)
 		return;
 	fprintf(stderr,"%s exception at 0x%lx!\n", ex[nr].name, pc);
 	DebugUI(REASON_CPU_EXCEPTION);
+}
+
+void DebugUI_Trigger()
+{
+	DebugUI(REASON_USER);
+}
+
+/* Register the callback to process remote command input */
+void DebugUI_RegisterRemoteDebug(DebugUI_ProcessRemoteCommands cmdCallback)
+{
+	remoteDebugcmdCallback = cmdCallback;
+}
+
+int DebugUI_ParseConsoleCommand(const char* command)
+{
+	return DebugUI_ParseCommand(command);
 }

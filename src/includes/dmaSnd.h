@@ -49,4 +49,7 @@ extern void DmaSnd_Init_Bass_and_Treble_Tables(void);
 
 extern void DmaSnd_Info(FILE *fp, uint32_t dummy);
 
+/* Sync memory/state that might need to be inspected by the Remote Debug system */
+extern void DmaSnd_RemoteDebugSync(void);
+
 #endif /* HATARI_DMASND_H */

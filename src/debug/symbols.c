@@ -63,6 +63,9 @@ static char *CurrentProgramPath;
 /* prevent repeated failing on every debugger invocation */
 static bool AutoLoadFailed;
 
+/* Remote debug code: debugging callback to inform of symbol table change */
+static Symbols_ChangedCallback CpuSymbolsChangedCallback = NULL;
+
 typedef enum {
 	SYMBOLS_FOR_NONE,
 	SYMBOLS_FOR_USER,
@@ -438,6 +441,8 @@ static void Symbols_UpdateCpu(symbol_list_t* list, symbols_for_t symfor)
 	}
 	CpuSymbolsList = list;
 	CpuSymbolsAreFor = symfor;
+	if (CpuSymbolsChangedCallback)
+		CpuSymbolsChangedCallback();
 }
 
 /**
@@ -830,6 +835,8 @@ void Symbols_RemoveCurrentProgram(void)
 			fprintf(stderr, "Program exit, removing its symbols.\n");
 			CpuSymbolsAreFor = SYMBOLS_FOR_NONE;
 			CpuSymbolsList = NULL;
+			if (CpuSymbolsChangedCallback)
+				CpuSymbolsChangedCallback();
 		}
 	}
 	AutoLoadFailed = false;
@@ -1116,6 +1123,8 @@ int Symbols_Command(int nArgc, char *psArgs[])
 		} else {
 			Symbols_Free(CpuSymbolsList);
 			CpuSymbolsList = NULL;
+			if (CpuSymbolsChangedCallback)
+				CpuSymbolsChangedCallback();
 		}
 		return DEBUGGER_CMDDONE;
 	}
@@ -1153,4 +1162,34 @@ int Symbols_Command(int nArgc, char *psArgs[])
 		DebugUI_PrintCmdHelp(psArgs[0]);
 	}
 	return DEBUGGER_CMDDONE;
+}
+
+int Symbols_CpuSymbolCount(void)
+{
+	if (!CpuSymbolsList)
+		return 0;
+	return CpuSymbolsList->namecount;
+}
+
+bool Symbols_GetCpuSymbol(int index, rdb_symbol_t* result)
+{
+	if (index >= Symbols_CpuSymbolCount())
+		return false;
+
+	const symbol_t* entry = CpuSymbolsList->names + index;
+	result->name = entry->name;
+	result->address = entry->address;
+	result->type = symbol_char(entry->type);
+	return true;
+}
+
+/* Function callback to inform when the symbol table has changed */
+void Symbols_RegisterCpuChangedCallback(Symbols_ChangedCallback callback)
+{
+	CpuSymbolsChangedCallback = callback;
+}
+
+const char* Symbols_CpuGetCurrentPath(void)
+{
+	return CurrentProgramPath;
 }

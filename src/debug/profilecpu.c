@@ -839,6 +839,17 @@ void Profile_CpuSave(FILE *out)
 }
 
 /* ------------------ CPU profile control ----------------- */
+/**
+ * Clear the values that are now not cleared in Profile_CpuStart().
+ */
+void Profile_CpuInit(void)
+{
+	cpu_profile.prev_cycles = 0;
+	cpu_profile.prev_family = 0;
+	// hrdb: prev_pc == 0 is used as a sentinel in CpuUpdate now to throw
+	// away the first bogus update result
+	cpu_profile.prev_pc = 0;
+}
 
 /**
  * Free data from last profiling run, if any
@@ -863,13 +874,31 @@ void Profile_CpuFree(void)
 bool Profile_CpuStart(void)
 {
 	int size;
+	uint64_t savePrevCycles;
+	int savePrevFamily;
+	uint32_t savePrevPC;
 
 	Profile_CpuFree();
 	if (!cpu_profile.enabled) {
 		return false;
 	}
 	/* zero everything */
+
+	/* hrdb mod: rather than completely losing all state, we remember
+	  the previous CPU instruction and time, so that when restarting
+	  cycles and instruction counts do not lose some information.
+	  This particularly happens for user breaks from the VBL. */
+	savePrevCycles = cpu_profile.prev_cycles;
+	savePrevFamily = cpu_profile.prev_family;
+	savePrevPC = cpu_profile.prev_pc;
+
 	memset(&cpu_profile, 0, sizeof(cpu_profile));
+
+	/* Restore the saved values after the memset. */
+	cpu_profile.prev_cycles = savePrevCycles;
+	cpu_profile.prev_family = savePrevFamily;
+	cpu_profile.prev_pc = savePrevPC;
+
 	memset(&cpu_warnings, 0, sizeof(cpu_warnings));
 	cpu_warnings.multireturn = MAX_MULTI_RETURN;
 
@@ -897,9 +926,8 @@ bool Profile_CpuStart(void)
 	CpuInstruction.I_Cache_miss = 0;
 	CpuInstruction.D_Cache_miss = 0;
 
-	cpu_profile.prev_cycles = CyclesGlobalClockCounter;
-	cpu_profile.prev_family = OpcodeFamily;
-	cpu_profile.prev_pc = M68000_GetPC();
+	/* hrdb mod: prev_cycles etc were initialised here but this is no longer needed */
+
 	if (ConfigureParams.System.bAddressSpace24) {
 		cpu_profile.prev_pc &= 0xffffff;
 	}
@@ -1141,7 +1169,20 @@ void Profile_CpuUpdate(void)
 	cpu_profile.prev_pc = pc = M68000_GetPC();
 	if (ConfigureParams.System.bAddressSpace24) {
 		cpu_profile.prev_pc &= 0xffffff;
+
 	}
+
+	/* Special case: the first ever update will have no "previous PC" set correctly,
+	since profile update never runs until debugger is enabled. So don't include in
+	accumulated results. */
+	if (!prev_pc)
+	{
+		//cpuprofile.prev_pc is updated already
+		cpu_profile.prev_cycles = CyclesGlobalClockCounter;
+		cpu_profile.prev_family = OpcodeFamily;
+		return;
+	}
+
 	if (unlikely(profile_loop.fp)) {
 		if (pc < prev_pc) {
 			if (pc == cpu_profile.loop_start && prev_pc == cpu_profile.loop_end) {
@@ -1267,6 +1308,18 @@ void Profile_CpuUpdate(void)
 #endif
 }
 
+/**
+ * Update CPU cycle and count statistics for PC address
+ * when profile accumulation not active
+ * This gets called after instruction has executed and PC
+ * has advanced to next instruction.
+ */
+void Profile_CpuUpdateInactive()
+{
+	cpu_profile.prev_cycles = CyclesGlobalClockCounter;
+	cpu_profile.prev_family = OpcodeFamily;
+	cpu_profile.prev_pc = M68000_GetPC();
+}
 
 /**
  * Helper for accounting CPU profile area item.
@@ -1440,4 +1493,42 @@ void Profile_CpuGetCallinfo(callinfo_t **callinfo, const char* (**get_caller)(ui
 	*callinfo = &(cpu_callinfo);
 	*get_caller = Symbols_GetBeforeCpuAddress;
 	*get_symbol = Symbols_GetByCpuAddress;
+}
+
+bool Profile_CpuQuery(uint32_t index, ProfileLine* result)
+{
+	cpu_profile_item_t *data;
+	data = cpu_profile.data;
+	if (!data) {
+		return false;
+	}
+
+	if (index >= cpu_profile.size)
+		return false;
+
+	result->count = data[index].count;
+	result->cycles = data[index].cycles;
+	if (result->count)
+		result->addr = index2address(index);
+	return true;
+}
+
+bool Profile_CpuIsEnabled(void)
+{
+	uint32_t *disasm_addr;
+	bool *enabled;
+	Profile_CpuGetPointers(&enabled, &disasm_addr);
+	return *enabled;
+}
+
+/**
+ * Enable/Disable CPU profiling
+ */
+void Profile_CpuEnable(int enable)
+{
+	uint32_t *disasm_addr;
+	bool *enabled;
+	Profile_CpuGetPointers(&enabled, &disasm_addr);
+
+	*enabled = enable;
 }

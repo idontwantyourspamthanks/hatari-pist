@@ -558,6 +558,7 @@ const char *Control_SetFifo(const char *path)
 		return "opening non-blocking read-only FIFO failed";
 	}
 	ControlFifo = fifo;
+
 	return NULL;
 }
 

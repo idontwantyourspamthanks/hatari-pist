@@ -59,6 +59,7 @@ const char Main_fileid[] = "Hatari main.c";
 #include "video.h"
 #include "avi_record.h"
 #include "debugui.h"
+#include "remotedebug.h"
 #include "clocks_timings.h"
 #include "utils.h"
 
@@ -575,7 +576,7 @@ static void Main_HandleMouseMotion(int dx, int dy)
  * Here we process the SDL events (keyboard, mouse, ...) and map it to
  * Atari IKBD events.
  */
-void Main_EventHandler(void)
+void Main_EventHandler(bool remoteDebugging)
 {
 	bool bContinueProcessing;
 	SDL_Event event;
@@ -589,6 +590,7 @@ void Main_EventHandler(void)
 
 		/* check remote process control */
 		remotepause = Control_CheckUpdates();
+		remotepause |= RemoteDebug_Update();
 
 		if ( bEmulationActive || remotepause )
 		{
@@ -604,6 +606,12 @@ void Main_EventHandler(void)
 		}
 		if (!events)
 		{
+			/* RDB change. If we are running the remote debugger break loop,
+			all we want to do is service the events then exit. So exit now that
+			we have exhausted the available events */
+			if (remoteDebugging)
+				break;
+
 			/* no events -> if emulation is active or
 			 * user is quitting -> return from function.
 			 */
@@ -854,6 +862,7 @@ static void Main_Init(void)
 
 	/* done as last, needs CPU & DSP running... */
 	DebugUI_Init();
+	RemoteDebug_Init();
 }
 
 
@@ -890,6 +899,7 @@ static void Main_UnInit(void)
 	/* SDL uninit: */
 	SDL_Quit();
 
+	RemoteDebug_UnInit();
 	/* Close debug log file */
 	DebugUI_UnInit();
 	Log_UnInit();

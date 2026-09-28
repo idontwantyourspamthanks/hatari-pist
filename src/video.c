@@ -462,6 +462,7 @@ const char Video_fileid[] = "Hatari video.c";
 #include "floppy_ipf.h"
 #include "statusbar.h"
 #include "clocks_timings.h"
+#include "remotedebug.h"
 #include "utils.h"
 
 
@@ -4990,6 +4991,13 @@ void Video_InterruptHandler_VBL ( void )
 	/* Process shortcut keys */
 	ShortCut_ActKey();
 
+	/* Check if remote debug requested a break.
+	 * Ideally it would be good to move this check somewhere else. Living here means
+	 * that single-stepping after break immediately jumps into the VBL routine
+	 * which can be very confusing, but it needs to be somewhere near here in
+	 * the emulation loop. But for the moment it mimics the keyboard shortcut. */
+	RemoteDebug_CheckRemoteBreak();
+
 	/* Update the IKBD's internal clock */
 	IKBD_UpdateClockOnVBL ();
 
@@ -6147,3 +6155,28 @@ void Video_Info(FILE *fp, uint32_t dummy)
 	/* TODO: any other information that would be useful to show? */
 }
 
+void Video_RemoteDebugSync(void)
+{
+	/* Esnure regs are updated in iomem */
+
+	/* This redoes calculations and updates up to 3 registers */
+	Video_ScreenCounter_ReadByte();
+
+	/* These are straightforward sync operations */
+	Video_Sync_ReadByte();
+	Video_BaseLow_ReadByte();
+	Video_LineWidth_ReadByte();
+	Video_HorScroll_Read();
+
+	/* This is a copy of Video_Res_ReadByte() but without read memory sync,
+	which would mess up cycle counts. */
+	if (bUseHighRes)
+		IoMem[0xff8260] = 2;			/* If mono monitor, force to high resolution */
+
+	if (Config_IsMachineST())
+		IoMem[0xff8260] |= 0xfc;		/* On STF, set unused bits 2-7 to 1 */
+	else if (Config_IsMachineTT())
+		IoMem[0xff8260] &= 0x07;		/* Only use bits 0, 1 and 2 */
+	else
+		IoMem[0xff8260] &= 0x03;		/* Only use bits 0 and 1, unused bits 2-7 are set to 0 */
+}

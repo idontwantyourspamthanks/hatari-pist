@@ -26,6 +26,7 @@ const char Vars_fileid[] = "Hatari vars.c";
 #include "debugui.h"
 #include "symbols.h"
 #include "68kDisass.h"
+#include "tos.h"
 #include "vars.h"
 
 
@@ -164,6 +165,11 @@ static uint32_t GetNextPC(void)
 	return Disasm_GetNextPC(M68000_GetPC());
 }
 
+static uint32_t GetTOSEnd(void)
+{
+	return TosAddress + TosSize;
+}
+
 /* sorted by variable name so that this can be bisected */
 static const var_addr_t hatari_vars[] = {
 	{ "AesOpcode", (uint32_t*)Vars_GetAesOpcode, VALUE_TYPE_FUNCTION32, 16, "$FFFF when not on AES trap" },
@@ -191,6 +197,8 @@ static const var_addr_t hatari_vars[] = {
 	{ "PConSymbol", (uint32_t*)PConSymbol, VALUE_TYPE_FUNCTION32, 16, "1 if PC on symbol, 0 otherwise" },
 	{ "TEXT", (uint32_t*)DebugInfo_GetTEXT, VALUE_TYPE_FUNCTION32, 0, "invalid before Desktop is up" },
 	{ "TEXTEnd", (uint32_t*)DebugInfo_GetTEXTEnd, VALUE_TYPE_FUNCTION32, 0, "invalid before Desktop is up" },
+	{ "TOSEnd", (uint32_t*)GetTOSEnd, VALUE_TYPE_FUNCTION32, 0, "end of TOS ROM" },
+	{ "TOSStart", &TosAddress, VALUE_TYPE_VAR32, 0, "start of TOS ROM" },
 	{ "VBL", (uint32_t*)&nVBLs, VALUE_TYPE_VAR32, sizeof(nVBLs)*8, "number of VBL interrupts" },
 	{ "VdiOpcode", (uint32_t*)Vars_GetVdiOpcode, VALUE_TYPE_FUNCTION32, 16, "$FFFF when not on VDI trap" },
 	{ "XbiosOpcode", (uint32_t*)GetXbiosOpcode, VALUE_TYPE_FUNCTION32, 16, "$FFFF when not on XBIOS trap" }
@@ -319,4 +327,15 @@ int Vars_List(int nArgc, char *psArgv[])
 	}
 	fputs("Some of the variables are valid only in specific situations.\n", stderr);
 	return DEBUGGER_CMDDONE;
+}
+
+bool Vars_QueryVariable(uint32_t position, const var_addr_t **result)
+{
+	*result = NULL;
+	if (position >= ARRAY_SIZE(hatari_vars))
+		return false;
+
+	const var_addr_t *hvar = hatari_vars + position;
+	*result = hvar;
+	return true;
 }

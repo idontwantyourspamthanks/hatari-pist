@@ -30,12 +30,23 @@ typedef enum {
 	REASON_USER        // e.g. keyboard shortcut
 } debug_reason_t;
 
+/* Callback type to register if remote debugging is enabled */
+typedef bool (*DebugUI_ProcessRemoteCommands)(void);
+
 extern void DebugUI_Init(void);
 extern void DebugUI(debug_reason_t reason);
 extern void DebugUI_Exceptions(int nr, long pc);
 extern bool DebugUI_ParseLine(const char *input);
 extern bool DebugUI_AddParseFile(const char *input);
 extern void DebugUI_MemorySnapShot_Capture(const char *path, bool bSave);
+extern void DebugUI_Trigger(void);
+
+// Register the callback to process remote command input
+extern void DebugUI_RegisterRemoteDebug(DebugUI_ProcessRemoteCommands cmdCallback);
+
+/* Process command from remote debug. Returns DEBUGGER_* code */
+extern int DebugUI_ParseConsoleCommand(const char* command);
+
 extern void DebugUI_UnInit(void);
 
 #endif /* HATARI_DEBUGUI_H */

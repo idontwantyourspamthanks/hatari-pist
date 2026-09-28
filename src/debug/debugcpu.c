@@ -1385,6 +1385,13 @@ void DebugCpu_Check(void)
 	{
 		Profile_CpuUpdate();
 	}
+	else
+	{
+		// hrdb: we always update profiling to cope with turning the profiling on/off
+		// at arbitrary points
+		Profile_CpuUpdateInactive();
+	}
+
 	if (LOG_TRACE_LEVEL((TRACE_CPU_DISASM|TRACE_CPU_SYMBOLS)))
 	{
 		const char *symbol;
@@ -1574,6 +1581,9 @@ static const dbgcommand_t cpucommands[] =
  */
 int DebugCpu_Init(const dbgcommand_t **table)
 {
+	/* Ensure all previous cpu state is reset */
+	Profile_CpuInit();
+
 	memdump_addr = 0;
 	disasm_addr = 0;
 	
@@ -1590,4 +1600,12 @@ void DebugCpu_InitSession(void)
 #define MAX_CPU_DISASM_OFFSET 16
 	disasm_addr = History_DisasmAddr(M68000_GetPC(), MAX_CPU_DISASM_OFFSET, false);
 	Profile_CpuStop();
+}
+
+/**
+ * Set number of CPU instruction steps to be run before debug-break
+ */
+void DebugCpu_SetSteps(int steps)
+{
+	nCpuSteps = steps;
 }

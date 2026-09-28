@@ -1684,3 +1684,57 @@ bool BreakAddr_Command(char *args, bool bForDsp)
 	}
 	return true;
 }
+
+bool BreakCond_GetCpuBreakpointInfo(int index, bc_breakpoint_query_t *result)
+{
+	result->expression = "";
+	result->ccount = 0;
+	result->hits = 0;
+	if ((index <= 0) || (index > CpuBreakPoints.count))
+		return false;
+
+	const bc_breakpoint_t* orig = &CpuBreakPoints.breakpoint[index - 1];
+	result->expression = orig->expression;
+	result->ccount = orig->ccount;
+	result->hits = orig->hits;
+	result->once = orig->options.once;
+	result->quiet = orig->options.quiet;
+	result->trace = orig->options.trace;
+	return true;
+}
+
+bool BreakCond_GetDspBreakpointInfo(int index, bc_breakpoint_query_t *result)
+{
+	result->expression = "";
+	result->ccount = 0;
+	result->hits = 0;
+	if ((index <= 0) || (index > DspBreakPoints.count))
+		return false;
+
+	const bc_breakpoint_t* orig = &DspBreakPoints.breakpoint[index - 1];
+	result->expression = orig->expression;
+	result->ccount = orig->ccount;
+	result->hits = orig->hits;
+	result->once = orig->options.once;
+	result->quiet = orig->options.quiet;
+	result->trace = orig->options.trace;
+	return true;
+}
+
+bool BreakCond_RemoveCpuBreakpoint(int position)
+{
+	bool ret;
+	/* This function subtracts one for the position, since
+	to the user breakpoint IDs start at 1 */
+	ret = BreakCond_Remove(&CpuBreakPoints, position);
+	return ret;
+}
+
+bool BreakCond_RemoveDspBreakpoint(int position)
+{
+	bool ret;
+	/* This function subtracts one for the position, since
+	to the user breakpoint IDs start at 1 */
+	ret = BreakCond_Remove(&DspBreakPoints, position);
+	return ret;
+}

@@ -82,5 +82,4 @@ void	ACIA_IKBD_Write_TDR ( void );
 
 void	ACIA_Info(FILE *fp, uint32_t dummy);
 
-
 #endif /* ifndef HATARI_ACIA_H */
