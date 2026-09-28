@@ -46,6 +46,7 @@ const char Screen_fileid[] = "Hatari screen.c";
 #include "statusbar.h"
 #include "vdi.h"
 #include "video.h"
+#include "pistmedia.h"
 #include "falcon/videl.h"
 
 #define DEBUG 0
@@ -1273,6 +1274,12 @@ static bool Screen_DrawFrame(bool bForceFlip)
 
 	/* Unlock screen */
 	Screen_UnLock();
+
+	/* hatari-pist: push the converted frame (cropped to the ST screen area,
+	 * without the statusbar strip) to the IDE, take its input */
+	PistMedia_PushFrame(sdlscrn, STScreenRect.w, STScreenRect.h,
+	                    bScreenContentsChanged);
+	PistMedia_PollInput();
 
 	/* draw overlay led(s) or statusbar after unlock */
 	Statusbar_OverlayBackup(sdlscrn);

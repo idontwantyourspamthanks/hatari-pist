@@ -17,6 +17,7 @@ const char Main_fileid[] = "Hatari main.c";
 #include "configuration.h"
 #include "control.h"
 #include "options.h"
+#include "pistmedia.h"
 #include "dialog.h"
 #include "audio.h"
 #include "joy.h"
@@ -863,6 +864,7 @@ static void Main_Init(void)
 static void Main_UnInit(void)
 {
 	Screen_ReturnFromFullScreen();
+	PistMedia_Quit();
 	Floppy_UnInit();
 	HDC_UnInit();
 	Ncr5380_UnInit();

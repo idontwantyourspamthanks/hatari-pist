@@ -44,3 +44,6 @@ Debug/*
 .cproject
 .project
 .settings/
+
+# Local build directory
+build/

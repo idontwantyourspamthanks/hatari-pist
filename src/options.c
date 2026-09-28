@@ -25,6 +25,7 @@ const char Options_fileid[] = "Hatari options.c";
 #include "configuration.h"
 #include "console.h"
 #include "control.h"
+#include "pistmedia.h"
 #include "debugui.h"
 #include "file.h"
 #include "floppy.h"
@@ -214,6 +215,7 @@ enum {
 	OPT_PARSE,
 	OPT_SAVECONFIG,
 	OPT_CONTROLSOCKET,
+	OPT_PISTMEDIA,
 	OPT_CMDFIFO,
 	OPT_LOGFILE,
 	OPT_LOGLEVEL,
@@ -527,6 +529,8 @@ static const opt_t HatariOptions[] = {
 	{ OPT_CMDFIFO, NULL, "--cmd-fifo",
 	  "<file>", "Hatari creates & reads commands from given fifo" },
 #endif
+	{ OPT_PISTMEDIA, NULL, "--pist-media",
+	  "<port>", "hatari-pist: run windowless, push frames to the IDE on this TCP port" },
 	{ OPT_LOGFILE, NULL, "--log-file",
 	  "<file>", "Save log output to <file> (default=stderr)" },
 	{ OPT_LOGLEVEL, NULL, "--log-level",
@@ -2258,6 +2262,15 @@ bool Opt_ParseParameters(int argc, const char * const argv[])
 
 		case OPT_MSG_REPEAT:
 			Log_ToggleMsgRepeat();
+			break;
+
+		case OPT_PISTMEDIA:
+			i += 1;
+			errstr = PistMedia_SetPort(argv[i]);
+			if (errstr)
+			{
+				return Opt_ShowError(OPT_PISTMEDIA, argv[i], errstr);
+			}
 			break;
 
 		case OPT_CONTROLSOCKET:
