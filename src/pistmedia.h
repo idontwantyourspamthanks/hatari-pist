@@ -36,6 +36,9 @@ extern bool PistMedia_Enabled(void);
 /* call after the frame is converted: w/h crop to the ST screen area
  * (excludes the statusbar strip), changed = bScreenContentsChanged */
 extern void PistMedia_PushFrame(SDL_Surface *surface, int w, int h, bool changed);
+/* call once per VBL after Sound_Update(): the span of newly mixed stereo
+ * s16 samples in the ring is streamed as an AUDIO message */
+extern void PistMedia_PushAudio(const int16_t (*ring)[2], int writePos, int ringPow2);
 extern void PistMedia_PollInput(void);
 extern void PistMedia_Quit(void);
 

@@ -49,6 +49,7 @@
 #include "pistmedia.h"
 #include "configuration.h"
 #include "ikbd.h"
+#include "audio.h"
 #include "video.h"
 #include "log.h"
 
@@ -264,6 +265,79 @@ static bool FlushPending(void)
 	}
 	pending_len = pending_off = 0;
 	return true;
+}
+
+void PistMedia_PushAudio(const int16_t (*ring)[2], int writePos, int ringPow2)
+{
+	static int prev = -1;
+	uint8_t header[9];
+	int len, start_idx, idx, part;
+	uint64_t start;
+	ssize_t n;
+
+	if (media_port <= 0 || !ring)
+		return;
+	if (media_fd < 0 || !hello_seen)
+	{
+		prev = writePos; /* start measuring from the next chunk */
+		return;
+	}
+	if (prev < 0)
+	{
+		prev = writePos;
+		return;
+	}
+
+	len = writePos - prev;
+	if (len < 0)
+		len += ringPow2;
+	start_idx = prev;
+	prev = writePos;
+	if (len <= 0)
+		return;
+
+	/* a partially-sent frame must finish before anything else is said, or
+	 * the audio bytes would land mid-frame and desync the stream; audio is
+	 * the more droppable of the two */
+	if (pending_len > 0 && !FlushPending())
+		return;
+	if (pending_len > 0)
+		return;
+
+	header[0] = 'A';
+	header[1] = (uint8_t)nAudioFrequency;
+	header[2] = (uint8_t)(nAudioFrequency >> 8);
+	header[3] = (uint8_t)(nAudioFrequency >> 16);
+	header[4] = (uint8_t)(nAudioFrequency >> 24);
+	header[5] = (uint8_t)len;
+	header[6] = (uint8_t)(len >> 8);
+	header[7] = (uint8_t)(len >> 16);
+	header[8] = (uint8_t)(len >> 24);
+
+	start = MonoMs();
+	n = WriteSome(header, sizeof(header));
+	if (n < 0)
+	{
+		Disconnect();
+		return;
+	}
+
+	/* the ring may wrap: write the chunk as at most two spans */
+	int first = len;
+	if (start_idx + first > ringPow2)
+		first = ringPow2 - start_idx;
+	idx = start_idx;
+	for (part = 0; part < 2; part++)
+	{
+		int count = (part == 0) ? first : (len - first);
+		if (count > 0 && WriteSome((const uint8_t *)ring[idx], (size_t)count * 4) < 0)
+		{
+			Disconnect();
+			return;
+		}
+		idx = 0;
+	}
+	stat_blocked_ms += MonoMs() - start;
 }
 
 void PistMedia_PushFrame(SDL_Surface *surface, int w, int h, bool changed)

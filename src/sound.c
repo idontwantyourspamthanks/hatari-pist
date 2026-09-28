@@ -143,6 +143,7 @@ const char Sound_fileid[] = "Hatari sound.c";
 #include "psg.h"
 #include "sound.h"
 #include "screen.h"
+#include "pistmedia.h"
 #include "video.h"
 #include "wavFormat.h"
 #include "ymFormat.h"
@@ -1811,6 +1812,10 @@ void Sound_Update(uint64_t CPU_Clock)
 void Sound_Update_VBL(void)
 {
 	Sound_Update ( CyclesGlobalClockCounter );			/* generate as many samples as needed to fill this VBL */
+
+	/* hatari-pist: tee this VBL's mixed samples to the IDE */
+	if (PistMedia_Enabled())
+		PistMedia_PushAudio(AudioMixBuffer, AudioMixBuffer_pos_write, AUDIOMIXBUFFER_SIZE);
 //fprintf ( stderr , "sound_update_vbl vbl=%d nbr=%d\n" , nVBLs, Sound_Stats_SamplePerVBL );
 
 	/* Update some stats */
