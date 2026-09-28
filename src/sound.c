@@ -1813,10 +1813,10 @@ void Sound_Update_VBL(void)
 {
 	Sound_Update ( CyclesGlobalClockCounter );			/* generate as many samples as needed to fill this VBL */
 
-	/* hatari-pist: tee this VBL's mixed samples to the IDE */
-	if (PistMedia_Enabled())
-		PistMedia_PushAudio(AudioMixBuffer, AudioMixBuffer_pos_write, AUDIOMIXBUFFER_SIZE);
-//fprintf ( stderr , "sound_update_vbl vbl=%d nbr=%d\n" , nVBLs, Sound_Stats_SamplePerVBL );
+	/* hatari-pist: tee this VBL's mixed samples to the IDE. A buffer-index
+	 * reset (pause, fast-forward, slow host) makes any span stale, so the
+	 * flag travels with the call and this VBL sends nothing. */
+	const bool soundIndexReset = Sound_BufferIndexNeedReset;
 
 	/* Update some stats */
 	Sound_Stats_Add ( Sound_Stats_SamplePerVBL );
@@ -1828,6 +1828,11 @@ void Sound_Update_VBL(void)
 		Sound_ResetBufferIndex ();
 		Sound_BufferIndexNeedReset = false;
 	}
+
+	if (PistMedia_Enabled())
+		PistMedia_PushAudio(AudioMixBuffer, AudioMixBuffer_pos_write, AUDIOMIXBUFFER_SIZE,
+		                    soundIndexReset);
+//fprintf ( stderr , "sound_update_vbl vbl=%d nbr=%d\n" , nVBLs, Sound_Stats_SamplePerVBL );
 	
 	/* Record AVI audio frame is necessary */
 	if ( Avi_AreWeRecording() )

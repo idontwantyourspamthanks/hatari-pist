@@ -267,19 +267,20 @@ static bool FlushPending(void)
 	return true;
 }
 
-void PistMedia_PushAudio(const int16_t (*ring)[2], int writePos, int ringPow2)
+void PistMedia_PushAudio(const int16_t (*ring)[2], int writePos, int ringPow2, bool indexReset)
 {
 	static int prev = -1;
-	uint8_t header[9];
-	int len, start_idx, idx, part;
+	int len, start_idx, first, idx, part;
+	size_t off = 0;
 	uint64_t start;
-	ssize_t n;
 
 	if (media_port <= 0 || !ring)
 		return;
-	if (media_fd < 0 || !hello_seen)
+	if (media_fd < 0 || !hello_seen || indexReset)
 	{
-		prev = writePos; /* start measuring from the next chunk */
+		/* a buffer-index reset (pause, stop, fast-forward) makes any span
+		 * stale: start measuring from the next chunk */
+		prev = writePos;
 		return;
 	}
 	if (prev < 0)
@@ -304,39 +305,41 @@ void PistMedia_PushAudio(const int16_t (*ring)[2], int writePos, int ringPow2)
 	if (pending_len > 0)
 		return;
 
-	header[0] = 'A';
-	header[1] = (uint8_t)nAudioFrequency;
-	header[2] = (uint8_t)(nAudioFrequency >> 8);
-	header[3] = (uint8_t)(nAudioFrequency >> 16);
-	header[4] = (uint8_t)(nAudioFrequency >> 24);
-	header[5] = (uint8_t)len;
-	header[6] = (uint8_t)(len >> 8);
-	header[7] = (uint8_t)(len >> 16);
-	header[8] = (uint8_t)(len >> 24);
-
+	/* Stage the whole message, then write it from the pending slot: one code
+	 * path for whole and partial sends, so a short write can never split a
+	 * message and desync the receiver (the failure PushFrame's stash exists
+	 * for). 9 + len*4 bytes, far below FRAME_MAX. */
+	if ((size_t)(9 + (size_t)len * 4) > pending_cap)
+		return; /* cannot stage: drop the chunk, keep the channel */
 	start = MonoMs();
-	n = WriteSome(header, sizeof(header));
-	if (n < 0)
-	{
-		Disconnect();
-		return;
-	}
+	pending[off++] = 'A';
+	pending[off++] = (uint8_t)nAudioFrequency;
+	pending[off++] = (uint8_t)(nAudioFrequency >> 8);
+	pending[off++] = (uint8_t)(nAudioFrequency >> 16);
+	pending[off++] = (uint8_t)(nAudioFrequency >> 24);
+	pending[off++] = (uint8_t)len;
+	pending[off++] = (uint8_t)(len >> 8);
+	pending[off++] = (uint8_t)(len >> 16);
+	pending[off++] = (uint8_t)(len >> 24);
 
-	/* the ring may wrap: write the chunk as at most two spans */
-	int first = len;
+	/* the ring may wrap: the chunk is at most two spans */
+	first = len;
 	if (start_idx + first > ringPow2)
 		first = ringPow2 - start_idx;
 	idx = start_idx;
 	for (part = 0; part < 2; part++)
 	{
-		int count = (part == 0) ? first : (len - first);
-		if (count > 0 && WriteSome((const uint8_t *)ring[idx], (size_t)count * 4) < 0)
+		const int count = (part == 0) ? first : (len - first);
+		if (count > 0)
 		{
-			Disconnect();
-			return;
+			memcpy(pending + off, ring[idx], (size_t)count * 4);
+			off += (size_t)count * 4;
 		}
 		idx = 0;
 	}
+	pending_len = off;
+	pending_off = 0;
+	FlushPending();
 	stat_blocked_ms += MonoMs() - start;
 }
 

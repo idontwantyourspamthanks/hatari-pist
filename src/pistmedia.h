@@ -37,8 +37,9 @@ extern bool PistMedia_Enabled(void);
  * (excludes the statusbar strip), changed = bScreenContentsChanged */
 extern void PistMedia_PushFrame(SDL_Surface *surface, int w, int h, bool changed);
 /* call once per VBL after Sound_Update(): the span of newly mixed stereo
- * s16 samples in the ring is streamed as an AUDIO message */
-extern void PistMedia_PushAudio(const int16_t (*ring)[2], int writePos, int ringPow2);
+ * s16 samples in the ring is streamed as an AUDIO message. indexReset =
+ * Sound_BufferIndexNeedReset: a reset makes any span stale, so it resyncs. */
+extern void PistMedia_PushAudio(const int16_t (*ring)[2], int writePos, int ringPow2, bool indexReset);
 extern void PistMedia_PollInput(void);
 extern void PistMedia_Quit(void);
 
