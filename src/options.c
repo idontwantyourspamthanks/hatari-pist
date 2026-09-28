@@ -530,7 +530,7 @@ static const opt_t HatariOptions[] = {
 	  "<file>", "Hatari creates & reads commands from given fifo" },
 #endif
 	{ OPT_PISTMEDIA, NULL, "--pist-media",
-	  "<port>", "hatari-pist: run windowless, push frames to the IDE on this TCP port" },
+	  "<port>", "hatari-pist: run windowless, push frames to the IDE on this TCP port (protocol v2: input)" },
 	{ OPT_LOGFILE, NULL, "--log-file",
 	  "<file>", "Save log output to <file> (default=stderr)" },
 	{ OPT_LOGLEVEL, NULL, "--log-level",
