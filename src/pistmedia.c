@@ -49,6 +49,7 @@
 #include "pistmedia.h"
 #include "configuration.h"
 #include "ikbd.h"
+#include "video.h"
 #include "log.h"
 
 #include <errno.h>
@@ -385,11 +386,17 @@ static void OnMessage(void)
 	{
 		/* relative deltas into the IKBD accumulator (the path
 		 * Main_HandleMouseMotion feeds after its display scaling; PiST
-		 * scales its side, so none happens here), buttons as state */
-		int16_t dx = (int16_t)(inbuf[1] | (inbuf[2] << 8));
-		int16_t dy = (int16_t)(inbuf[3] | (inbuf[4] << 8));
-		KeyboardProcessor.Mouse.dx += dx;
-		KeyboardProcessor.Mouse.dy += dy;
+		 * scales its side, so none happens here), buttons as state.
+		 * The SDL path's early-boot guard applies too: motion in the
+		 * first VBLs confuses TOS (main.c's bIgnoreNextMouseMotion
+		 * rationale). */
+		if (nVBLs >= 10)
+		{
+			int16_t dx = (int16_t)(inbuf[1] | (inbuf[2] << 8));
+			int16_t dy = (int16_t)(inbuf[3] | (inbuf[4] << 8));
+			KeyboardProcessor.Mouse.dx += dx;
+			KeyboardProcessor.Mouse.dy += dy;
+		}
 		if (inbuf[5] & 1)
 			Keyboard.bLButtonDown |= BUTTON_MOUSE;
 		else
