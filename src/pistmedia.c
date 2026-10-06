@@ -107,6 +107,10 @@ static uint8_t *pending;      /* buffered partial frame */
 static size_t   pending_cap;  /* its allocation size */
 static size_t   pending_len;  /* total bytes of the buffered frame */
 static size_t   pending_off;  /* bytes of it already written */
+/* A changed frame was dropped because the previous one was still draining
+ * (below); once the wire clears, re-send the current surface once so the
+ * panel catches up instead of sitting a frame behind on a now-quiet screen. */
+static bool     dropped_while_draining;
 
 
 /* inbound message accumulator (HELLO is 12 bytes, KEY 3, magic check 4) */
@@ -489,11 +493,20 @@ void PistMedia_PushFrame(SDL_Surface *surface, int w, int h, bool changed)
 	if (pending_len > 0)
 	{
 		/* previous frame still draining: drop this one, never queue two */
+		if (changed)
+			dropped_while_draining = true;
 		stat_frames_dropped++;
 		return;
 	}
 	if (!surface || w <= 0 || h <= 0)
 		return;
+	if (dropped_while_draining)
+	{
+		/* the screen is quiet now, so nothing else would re-send the state the
+		 * panel missed while the previous frame drained; force it through */
+		dropped_while_draining = false;
+		changed = true;
+	}
 	if (!changed && w == last_w && h == last_h)
 		return;
 	if (surface->format->BytesPerPixel != 4)
