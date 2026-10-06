@@ -57,19 +57,47 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+/* The channel is plain TCP, so it wants no Unix-domain sockets — but Windows
+ * has no POSIX socket headers at all and gets WinSock instead. Same shape as
+ * debug/remotedebug.c: HAVE_WINSOCK_SOCKETS is what CMake's
+ * check_include_files(winsock.h) puts in config.h (reached through main.h), and
+ * src/CMakeLists.txt links ws2_32 on WIN32. WinSock has neither MSG_DONTWAIT
+ * nor fcntl, so the socket goes non-blocking through ioctlsocket — which is
+ * what the flag was asking for — and its errors come from WSAGetLastError, not
+ * errno. A SOCKET is unsigned, hence the sentinel and MEDIA_CONNECTED() in
+ * place of a `fd >= 0` test. */
+#if HAVE_WINSOCK_SOCKETS
+#include <winsock.h>
+typedef SOCKET    media_socket_t;
+typedef int       media_socklen_t;
+typedef SSIZE_T   media_ssize_t;
+#define MEDIA_INVALID_SOCKET  INVALID_SOCKET
+#define MEDIA_CONNECTED()     (media_fd != MEDIA_INVALID_SOCKET)
+#define MEDIA_RW_FLAGS        0
+#define MEDIA_CLOSE           closesocket
+#else
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
+typedef int       media_socket_t;
+typedef socklen_t media_socklen_t;
+typedef ssize_t   media_ssize_t;
+#define MEDIA_INVALID_SOCKET  (-1)
+#define MEDIA_CONNECTED()     (media_fd >= 0)
+#define MEDIA_RW_FLAGS        MSG_DONTWAIT
+#define MEDIA_CLOSE           close
+#endif
 
 #define FRAME_MAGIC    0x46524D31u
 #define HELLO_VERSION  1u
 #define HELLO_BYTES    12
 #define FRAME_MAX      (8 * 1024 * 1024 + 36) /* generous: any ST/TT/Falcon mode */
 
-static int      media_fd = -1;
+static media_socket_t media_fd = MEDIA_INVALID_SOCKET;
 static int      media_port;
 static uint32_t media_seq;
 static bool     hello_seen;
@@ -109,6 +137,66 @@ static void LogStats(void)
 	           (unsigned long long)stat_blocked_ms);
 }
 
+#if HAVE_WINSOCK_SOCKETS
+/* WinSock needs one startup per process. remotedebug.c does its own and the
+ * calls are refcounted, so the media channel never depends on the HRDB
+ * listener having come up first. There is no matching WSACleanup: the socket
+ * lives until the process does. */
+static bool StartWinsock(void)
+{
+	static bool started;
+	WSADATA data;
+
+	if (started)
+		return true;
+	if (WSAStartup(MAKEWORD(2, 2), &data) != 0)
+	{
+		Log_Printf(LOG_WARN, "pist-media: WSAStartup failed (WSA error %d)\n",
+		           WSAGetLastError());
+		return false;
+	}
+	started = true;
+	return true;
+}
+#endif
+
+/* WinSock has no fcntl; FIONBIO is the same request. */
+static void SetNonBlocking(media_socket_t fd)
+{
+#if HAVE_WINSOCK_SOCKETS
+	u_long mode = 1;
+	ioctlsocket(fd, FIONBIO, &mode);
+#else
+	fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
+#endif
+}
+
+/* The retry log names why the connect failed; WinSock does not set errno, so
+ * the two paths describe it differently. */
+static void LogConnectFailure(void)
+{
+#if HAVE_WINSOCK_SOCKETS
+	Log_Printf(LOG_INFO, "pist-media: connect to 127.0.0.1:%d failed (WSA error %d), "
+	           "retry in 1s\n", media_port, WSAGetLastError());
+#else
+	Log_Printf(LOG_INFO, "pist-media: connect to 127.0.0.1:%d failed (%s), "
+	           "retry in 1s\n", media_port, strerror(errno));
+#endif
+}
+
+/* Windows has no setenv, and _putenv_s always overwrites, so the getenv test
+ * there is what stands in for setenv's overwrite=0. */
+static void DefaultDriver(const char *name, const char *value)
+{
+	if (getenv(name))
+		return;
+#ifdef WIN32
+	_putenv_s(name, value);
+#else
+	setenv(name, value, 0);
+#endif
+}
+
 const char *PistMedia_SetPort(const char *arg)
 {
 	long port;
@@ -123,8 +211,8 @@ const char *PistMedia_SetPort(const char *arg)
 
 	/* media mode is windowless: default both drivers to dummy (an explicit
 	 * user setting still wins) */
-	setenv("SDL_VIDEODRIVER", "dummy", 0);
-	setenv("SDL_AUDIODRIVER", "dummy", 0);
+	DefaultDriver("SDL_VIDEODRIVER", "dummy");
+	DefaultDriver("SDL_AUDIODRIVER", "dummy");
 	return NULL;
 }
 
@@ -135,9 +223,9 @@ bool PistMedia_Enabled(void)
 
 static void Disconnect(void)
 {
-	if (media_fd >= 0)
-		close(media_fd);
-	media_fd = -1;
+	if (MEDIA_CONNECTED())
+		MEDIA_CLOSE(media_fd);
+	media_fd = MEDIA_INVALID_SOCKET;
 	hello_seen = false;
 	inlen = 0;
 	pending_len = pending_off = 0;
@@ -167,22 +255,28 @@ static void SendAuth(void)
 		}
 		msg[4 + i] = (uint8_t)byte;
 	}
-	if (send(media_fd, msg, sizeof(msg), MSG_DONTWAIT) != (ssize_t)sizeof(msg))
+	if (send(media_fd, (const char *)msg, (int)sizeof(msg), MEDIA_RW_FLAGS)
+	    != (media_ssize_t)sizeof(msg))
 		Log_Printf(LOG_WARN, "pist-media: could not send AUTH\n");
 }
 
 static void Connect(void)
 {
 	struct sockaddr_in addr, local;
-	socklen_t loclen = sizeof(local);
+	media_socklen_t loclen = sizeof(local);
 	int sndbuf = 4 * 1024 * 1024;
 	int one = 1;
 
-	if (media_fd >= 0 || MonoMs() < next_connect_ms)
+	if (MEDIA_CONNECTED() || MonoMs() < next_connect_ms)
 		return;
 
+#if HAVE_WINSOCK_SOCKETS
+	if (!StartWinsock())
+		return;
+#endif
+
 	media_fd = socket(AF_INET, SOCK_STREAM, 0);
-	if (media_fd < 0)
+	if (media_fd == MEDIA_INVALID_SOCKET)
 		return;
 
 	addr.sin_family = AF_INET;
@@ -190,12 +284,11 @@ static void Connect(void)
 	addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 	if (connect(media_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
 	{
-		close(media_fd);
-		media_fd = -1;
+		MEDIA_CLOSE(media_fd);
+		media_fd = MEDIA_INVALID_SOCKET;
 		stat_connect_failures++;
 		next_connect_ms = MonoMs() + 1000; /* 1 Hz backoff */
-		Log_Printf(LOG_INFO, "pist-media: connect to 127.0.0.1:%d failed (%s), "
-		           "retry in 1s\n", media_port, strerror(errno));
+		LogConnectFailure();
 		return;
 	}
 
@@ -206,16 +299,17 @@ static void Connect(void)
 	{
 		Log_Printf(LOG_WARN, "pist-media: self-connect (local port == %d), dropping\n",
 		           media_port);
-		close(media_fd);
-		media_fd = -1;
+		MEDIA_CLOSE(media_fd);
+		media_fd = MEDIA_INVALID_SOCKET;
 		stat_selfconnects++;
 		next_connect_ms = MonoMs() + 1000;
 		return;
 	}
 
-	setsockopt(media_fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
-	setsockopt(media_fd, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
-	fcntl(media_fd, F_SETFL, fcntl(media_fd, F_GETFL) | O_NONBLOCK);
+	/* (const char *) is WinSock's optval type; POSIX takes const void *. */
+	setsockopt(media_fd, IPPROTO_TCP, TCP_NODELAY, (const char *)&one, sizeof(one));
+	setsockopt(media_fd, SOL_SOCKET, SO_SNDBUF, (const char *)&sndbuf, sizeof(sndbuf));
+	SetNonBlocking(media_fd);
 
 	/* frameskipping starves the panel under fast-forward: cap it off */
 	ConfigureParams.Screen.nFrameSkips = 0;
@@ -236,13 +330,19 @@ static void Connect(void)
 }
 
 /* non-blocking write; returns bytes consumed (0 on EAGAIN), -1 on error */
-static ssize_t WriteSome(const uint8_t *buf, size_t len)
+static media_ssize_t WriteSome(const uint8_t *buf, size_t len)
 {
-	ssize_t n = send(media_fd, buf, len, MSG_DONTWAIT);
+	media_ssize_t n = send(media_fd, (const char *)buf, (int)len, MEDIA_RW_FLAGS);
 	if (n < 0)
 	{
+#if HAVE_WINSOCK_SOCKETS
+		const int err = WSAGetLastError();
+		if (err == WSAEWOULDBLOCK || err == WSAEINTR)
+			return 0;
+#else
 		if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
 			return 0;
+#endif
 		return -1;
 	}
 	return n;
@@ -253,7 +353,7 @@ static bool FlushPending(void)
 {
 	while (pending_off < pending_len)
 	{
-		ssize_t n = WriteSome(pending + pending_off, pending_len - pending_off);
+		media_ssize_t n = WriteSome(pending + pending_off, pending_len - pending_off);
 		if (n < 0)
 		{
 			Disconnect();
@@ -276,7 +376,7 @@ void PistMedia_PushAudio(const int16_t (*ring)[2], int writePos, int ringPow2, b
 
 	if (media_port <= 0 || !ring)
 		return;
-	if (media_fd < 0 || !hello_seen || indexReset)
+	if (!MEDIA_CONNECTED() || !hello_seen || indexReset)
 	{
 		/* a buffer-index reset (pause, stop, fast-forward) makes any span
 		 * stale: start measuring from the next chunk */
@@ -348,13 +448,13 @@ void PistMedia_PushFrame(SDL_Surface *surface, int w, int h, bool changed)
 	uint32_t header[9];
 	size_t payload, total, done;
 	uint64_t start;
-	ssize_t n1, n2;
+	media_ssize_t n1, n2;
 
 	if (media_port <= 0)
 		return;
-	if (media_fd < 0)
+	if (!MEDIA_CONNECTED())
 		Connect();
-	if (media_fd < 0)
+	if (!MEDIA_CONNECTED())
 		return;
 	if (!hello_seen)
 		return; /* nothing streams before the IDE's HELLO */
@@ -497,19 +597,19 @@ void PistMedia_PollInput(void)
 {
 	uint8_t buf[256];
 
-	if (media_fd < 0)
+	if (!MEDIA_CONNECTED())
 		return;
 
 	for (;;)
 	{
-		ssize_t n = recv(media_fd, buf, sizeof(buf), MSG_DONTWAIT);
+		media_ssize_t n = recv(media_fd, (char *)buf, (int)sizeof(buf), MEDIA_RW_FLAGS);
 		if (n <= 0)
 		{
 			if (n == 0)
 				Disconnect(); /* peer closed */
 			break;
 		}
-		for (ssize_t i = 0; i < n; i++)
+		for (media_ssize_t i = 0; i < n; i++)
 		{
 			int need;
 
