@@ -160,14 +160,31 @@ static bool StartWinsock(void)
 }
 #endif
 
-/* WinSock has no fcntl; FIONBIO is the same request. */
-static void SetNonBlocking(media_socket_t fd)
+/* WinSock has no fcntl; FIONBIO is the same request. The whole channel depends
+ * on the switch taking effect: this path runs from the VBL, so a recv() that
+ * blocks on an empty socket would freeze the emulation loop — and with it the
+ * HRDB listener — while the IDE still believes the session is running. A
+ * failed switch therefore drops the channel instead of wedging the machine. */
+static bool SetNonBlocking(media_socket_t fd)
 {
 #if HAVE_WINSOCK_SOCKETS
 	u_long mode = 1;
-	ioctlsocket(fd, FIONBIO, &mode);
+	if (ioctlsocket(fd, FIONBIO, &mode) != 0)
+	{
+		Log_Printf(LOG_WARN, "pist-media: ioctlsocket(FIONBIO) failed (WSA error %d); "
+		           "dropping the channel rather than blocking the loop\n",
+		           WSAGetLastError());
+		return false;
+	}
+	return true;
 #else
-	fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
+	if (fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK) == -1)
+	{
+		Log_Printf(LOG_WARN, "pist-media: O_NONBLOCK failed (%s); dropping the channel "
+		           "rather than blocking the loop\n", strerror(errno));
+		return false;
+	}
+	return true;
 #endif
 }
 
@@ -309,7 +326,14 @@ static void Connect(void)
 	/* (const char *) is WinSock's optval type; POSIX takes const void *. */
 	setsockopt(media_fd, IPPROTO_TCP, TCP_NODELAY, (const char *)&one, sizeof(one));
 	setsockopt(media_fd, SOL_SOCKET, SO_SNDBUF, (const char *)&sndbuf, sizeof(sndbuf));
-	SetNonBlocking(media_fd);
+	if (!SetNonBlocking(media_fd))
+	{
+		MEDIA_CLOSE(media_fd);
+		media_fd = MEDIA_INVALID_SOCKET;
+		stat_connect_failures++;
+		next_connect_ms = MonoMs() + 1000;
+		return;
+	}
 
 	/* frameskipping starves the panel under fast-forward: cap it off */
 	ConfigureParams.Screen.nFrameSkips = 0;
