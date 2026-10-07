@@ -1,14 +1,16 @@
 
 
-                                    Hatari
+                                  hatari-pist
 
-                             Version 2.6.1, August 2025
+                       The PiST project's fork of Hatari 2.6.1
+                            (upstream 2.6.1, August 2025)
 
                             https://www.hatari-emu.org/
 
 
 Contents:
 ---------
+0. What hatari-pist is
 1. License
 2. What is Hatari?
 3. Compiling and installing
@@ -23,6 +25,50 @@ Contents:
 6. Hatari source subdirectory contents
 7. Contact
 
+
+ 0) What hatari-pist is
+ ----------------------
+
+hatari-pist is the PiST project's fork of Hatari.  PiST is an IDE for Atari
+ST 68000 assembly development; it bundles this emulator and runs it as a
+separate subprocess -- driven by command-line arguments only, never linked
+(the licence terms in section 1 are one reason).  The fork exists to give the
+IDE two things stock Hatari does not have:
+
+* The media channel ("--pist-media <port>", src/pistmedia.c): the emulator
+  runs windowless and pushes each converted frame and each VBL's mixed audio
+  to the IDE over a localhost TCP connection, and takes keyboard and relative
+  mouse input back on the same socket.  Sends never block emulation: a frame
+  that cannot go out is dropped, and sequence numbers let the IDE drop stale
+  ones.  Nothing is streamed until the IDE authenticates the connection
+  (protocol v2: AUTH before HELLO).
+
+* The HRDB remote debugger (src/debug/remotedebug.c, merged from
+  tattlemuss/hatari's hrdb-main branch): a typed request/response remote
+  debugger on TCP port 56001, started unconditionally at boot.  It is the
+  debug transport on Windows, where neither the stdin debugger nor
+  --control-socket is usable.
+
+Everything else is upstream Hatari 2.6.1, kept as close to stock as possible:
+one self-contained new file plus small hooks per addition, so that rebasing
+onto a newer upstream is a bounded job.  Two constraints are load-bearing for
+PiST and must not change lightly:
+
+- The binary keeps the name "hatari" -- PiST's tool discovery matches that
+  literal to avoid process-probing a GUI binary on the GUI thread.  Installed
+  as "hatari-pist" instead, every override-path lookup hangs and opens a
+  window.
+- The build deliberately finds no GNU Readline: PiST's bundled emulator must
+  not link GPLv3 code (the conveyed binary is GPLv2-capped), and a non-readline
+  build fixes which stream carries the debugger's "> " prompt (stderr), making
+  the transport framing deterministic.
+
+The pinned upstream source (a v2.6.1 tag archive, not "main", with checksum),
+the exact build command and the licence analysis are recorded in
+HATARI-PIST.md in this tree.  The design rationale lives in the PiST
+repository: docs/PLAN.md, section 12 ("hatari-pist: the emulator fork").
+
+Sections 1 to 7 below are the upstream Hatari readme, unmodified.
 
  1) License
  ----------
