@@ -179,6 +179,14 @@ void Profile_CpuUpdate(void) { }
 void Profile_CpuUpdateInactive(void) { }
 void Profile_CpuStop(void) { }
 
+/* fake CPU coverage. The real recorder pulls in the CPU core. */
+#include "coverage.h"
+const char Coverage_Description[] = "";
+int Coverage_Command(int nArgc, char *psArgs[]) { return DEBUGGER_CMDDONE; }
+char *Coverage_Match(const char *text, int state) { return NULL; }
+bool Coverage_IsRecording(void) { return false; }
+void Coverage_Update(void) { }
+
 /* fake Hatari video variables */
 #include "video.h"
 int nHBL = 20;

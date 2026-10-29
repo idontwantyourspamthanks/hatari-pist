@@ -28,6 +28,7 @@ const char DebugCpu_fileid[] = "Hatari debugcpu.c";
 #include "m68000.h"
 #include "memorySnapShot.h"
 #include "profile.h"
+#include "coverage.h"
 #include "stMemory.h"
 #include "str.h"
 #include "symbols.h"
@@ -1391,6 +1392,9 @@ void DebugCpu_Check(void)
 		// at arbitrary points
 		Profile_CpuUpdateInactive();
 	}
+	/* Independent of the profiler. Counts the instruction that just finished. */
+	if (Coverage_IsRecording())
+		Coverage_Update();
 
 	if (LOG_TRACE_LEVEL((TRACE_CPU_DISASM|TRACE_CPU_SYMBOLS)))
 	{
@@ -1445,7 +1449,7 @@ void DebugCpu_SetDebugging(void)
 
 	if (nCpuActiveCBs || nCpuSteps || bCpuProfiling || History_TrackCpu()
 	    || LOG_TRACE_LEVEL((TRACE_CPU_DISASM|TRACE_CPU_SYMBOLS|TRACE_CPU_REGS))
-	    || ConOutDevices)
+	    || ConOutDevices || Coverage_IsRecording())
 	{
 		M68000_SetDebugger(true);
 		nCpuInstructions = 0;
@@ -1483,6 +1487,11 @@ static const dbgcommand_t cpucommands[] =
 	  "\tBy default values are interpreted as bytes, with 'c', 'w'\n"
 	  "\tor 'l', they're interpreted as chars/words/longs instead,\n"
 	  "\tand find is done for correspondingly aligned addresses.",
+	  false },
+	{ Coverage_Command, Coverage_Match,
+	  "coverage", "",
+	  "record executed ST RAM instruction addresses",
+	  Coverage_Description,
 	  false },
 	{ DebugCpu_Profile, Profile_Match,
 	  "profile", "",
