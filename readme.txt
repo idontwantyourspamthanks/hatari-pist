@@ -33,7 +33,7 @@ hatari-pist is the PiST project's fork of Hatari.  PiST is an IDE for Atari
 ST 68000 assembly development; it bundles this emulator and runs it as a
 separate subprocess -- driven by command-line arguments only, never linked
 (the licence terms in section 1 are one reason).  The fork exists to give the
-IDE two things stock Hatari does not have:
+IDE what stock Hatari does not have:
 
 * The media channel ("--pist-media <port>", src/pistmedia.c): the emulator
   runs windowless and pushes each converted frame and each VBL's mixed audio
@@ -48,6 +48,10 @@ IDE two things stock Hatari does not have:
   debugger on TCP port 56001, started unconditionally at boot.  It is the
   debug transport on Windows, where neither the stdin debugger nor
   --control-socket is usable.
+
+* Coverage is a debugger command that records executed ST RAM instruction
+  addresses without disassembly (src/debug/coverage.c).  Recording does not
+  enable the CPU profiler, and the profiler does not enable recording.
 
 Everything else is upstream Hatari 2.6.1, kept as close to stock as possible:
 one self-contained new file plus small hooks per addition, so that rebasing
