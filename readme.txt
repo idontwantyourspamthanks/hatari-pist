@@ -63,7 +63,8 @@ IDE what stock Hatari does not have:
 * reststop (a debugger command, src/debug/reststop.c) restores one snapshot
   written by statesave and returns to the stdin debugger prompt at that
   guest state.  The instruction at the restored PC has not executed.  This
-  is one snapshot, not step-back.  stateload is unchanged.
+  is one snapshot, not step-back.  stateload is unchanged.  Restoring that
+  stop and executing the same steps again matches, including one VBL.
 
 Everything else is upstream Hatari 2.6.1, kept as close to stock as possible:
 one self-contained new file plus small hooks per addition, so that rebasing

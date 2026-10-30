@@ -4,3 +4,9 @@ add_test(NAME restore-one-snapshot
          COMMAND python3 ${testrunner} $<TARGET_FILE:${APP_NAME}>
                  ${CMAKE_CURRENT_SOURCE_DIR}/fixture.prg)
 set_tests_properties(restore-one-snapshot PROPERTIES TIMEOUT 120)
+
+add_test(NAME roundtrip
+         COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/run_roundtrip.py
+                 $<TARGET_FILE:${APP_NAME}>
+                 ${CMAKE_CURRENT_SOURCE_DIR}/fixture.prg)
+set_tests_properties(roundtrip PROPERTIES TIMEOUT 180)
