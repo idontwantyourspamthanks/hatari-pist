@@ -440,6 +440,7 @@ const char Video_fileid[] = "Hatari video.c";
 #include "ioMem.h"
 #include "keymap.h"
 #include "m68000.h"
+#include "paltrace.h"
 #include "hatari-glue.h"
 #include "memorySnapShot.h"
 #include "mfp.h"
@@ -5415,6 +5416,7 @@ static void Video_ColorReg_WriteWord(void)
 		col &= 0xfff;			/* Mask off to STe 4096 palette */
 
 	addr &= 0xfffffffe;			/* Ensure addr is even to store the 16 bit color */
+	PalTrace_Note(addr, col);		/* masked color, at this write */
 	IoMem_WriteWord(addr, col);		/* (some games write 0xFFFF and read back to see if STe) */
 
 	idx = (addr - 0xff8240) / 2;		/* words */

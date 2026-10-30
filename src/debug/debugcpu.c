@@ -31,6 +31,7 @@ const char DebugCpu_fileid[] = "Hatari debugcpu.c";
 #include "coverage.h"
 #include "reststop.h"
 #include "writetrace.h"
+#include "paltrace.h"
 #include "stMemory.h"
 #include "str.h"
 #include "symbols.h"
@@ -1504,6 +1505,11 @@ static const dbgcommand_t cpucommands[] =
 	  "writetrace", "",
 	  "log writes in one RAM range",
 	  WriteTrace_Description,
+	  false },
+	{ PalTrace_Command, PalTrace_Match,
+	  "paltrace", "",
+	  "log shifter palette writes",
+	  PalTrace_Description,
 	  false },
 	{ DebugCpu_Profile, Profile_Match,
 	  "profile", "",

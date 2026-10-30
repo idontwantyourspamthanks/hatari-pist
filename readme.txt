@@ -72,6 +72,13 @@ IDE what stock Hatari does not have:
   as dropped.  It does not stop the CPU.  This is not a memory-history view
   and not a stop hook.
 
+* paltrace (a debugger command, src/debug/paltrace.c) records each shifter
+  palette write at Video_ColorReg_WriteWord with the PC, register, masked
+  color, VBL, HBL, and position on that line.  The line comes from the
+  video timing at the write.  50 Hz and 60 Hz do not share a 512-cycle
+  line.  It does not stop the CPU.  This is not a scanline inspector and
+  not a stop hook.
+
 Everything else is upstream Hatari 2.6.1, kept as close to stock as possible:
 one self-contained new file plus small hooks per addition, so that rebasing
 onto a newer upstream is a bounded job.  Two constraints are load-bearing for

@@ -206,6 +206,14 @@ void WriteTrace_NoteSlow(uint32_t addr, int width, uint32_t value) { }
 void WriteTrace_DebugEnter(void) { }
 void WriteTrace_DebugLeave(void) { }
 
+/* fake paltrace. The real command records palette writes from the shifter. */
+#include "paltrace.h"
+const char PalTrace_Description[] = "";
+bool PalTrace_Active;
+int PalTrace_Command(int nArgc, char *psArgs[]) { return DEBUGGER_CMDDONE; }
+char *PalTrace_Match(const char *text, int state) { return NULL; }
+void PalTrace_Note(uint32_t addr, uint16_t color) { }
+
 /* fake Hatari video variables */
 #include "video.h"
 int nHBL = 20;
