@@ -60,6 +60,7 @@
 #include "debugui.h"
 #include "debugcpu.h"
 #include "reststop.h"
+#include "writetrace.h"
 #include "stMemory.h"
 #include "blitter.h"
 #include "scc.h"
@@ -5444,6 +5445,7 @@ static void m68k_run_1 (void)
 #endif
 
 				r->instruction_pc = m68k_getpc ();
+				WriteTrace_ResetTags();
 				cpu_cycles = (*cpufunctbl[r->opcode])(r->opcode) & 0xffff;
 				if (!regs.loop_mode)
 					regs.ird = regs.opcode;
@@ -5608,6 +5610,7 @@ static void m68k_run_1_ce (void)
 #endif
 
 				r->instruction_pc = m68k_getpc ();
+				WriteTrace_ResetTags();
 #ifndef WINUAE_FOR_HATARI
 #ifdef DEBUGGER
 				if (debug_dma) {
@@ -9234,21 +9237,30 @@ void mem_access_delay_byte_write (uaecptr addr, uae_u32 v)
 
 	if ( BlitterPhase )	Blitter_HOG_CPU_mem_access_before ( 1 );	// WINUAE_FOR_HATARI
 
+	/* Tag only this store. The PC is the instruction's, not regs.pc.
+	 * A blitter transfer that runs during the cycle tail pushes its
+	 * own tag above this one. */
 	switch (ce_banktype[addr >> 16])
 	{
 	case CE_MEMBANK_CHIP16:
 	case CE_MEMBANK_CHIP32:
+		WriteTrace_PushCpu(regs.instruction_pc);
 		wait_cpu_cycle_write (addr, 0, v);
+		WriteTrace_Pop();
 		if ( BlitterPhase )	Blitter_HOG_CPU_mem_access_after ( 1 );	// WINUAE_FOR_HATARI
 		return;
 	case CE_MEMBANK_FAST16:
 	case CE_MEMBANK_FAST32:
+		WriteTrace_PushCpu(regs.instruction_pc);
 		put_byte (addr, v);
 		x_do_cycles_post (4 * cpucycleunit, v);
+		WriteTrace_Pop();
 		if ( BlitterPhase )	Blitter_HOG_CPU_mem_access_after ( 1 );	// WINUAE_FOR_HATARI
 		return;
 	}
+	WriteTrace_PushCpu(regs.instruction_pc);
 	put_byte (addr, v);
+	WriteTrace_Pop();
 }
 void mem_access_delay_word_write (uaecptr addr, uae_u32 v)
 {
@@ -9261,17 +9273,23 @@ void mem_access_delay_word_write (uaecptr addr, uae_u32 v)
 	{
 	case CE_MEMBANK_CHIP16:
 	case CE_MEMBANK_CHIP32:
+		WriteTrace_PushCpu(regs.instruction_pc);
 		wait_cpu_cycle_write (addr, 1, v);
+		WriteTrace_Pop();
 		if ( BlitterPhase )	Blitter_HOG_CPU_mem_access_after ( 1 );	// WINUAE_FOR_HATARI
 		return;
 	case CE_MEMBANK_FAST16:
 	case CE_MEMBANK_FAST32:
+		WriteTrace_PushCpu(regs.instruction_pc);
 		put_word (addr, v);
 		x_do_cycles_post (4 * cpucycleunit, v);
+		WriteTrace_Pop();
 		if ( BlitterPhase )	Blitter_HOG_CPU_mem_access_after ( 1 );	// WINUAE_FOR_HATARI
 		return;
 	}
+	WriteTrace_PushCpu(regs.instruction_pc);
 	put_word (addr, v);
+	WriteTrace_Pop();
 }
 
 static void start_020_cycle(void)

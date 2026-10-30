@@ -28,6 +28,7 @@ const char Memory_fileid[] = "Hatari memory.c";
 #include "m68000.h"
 #include "configuration.h"
 #include "video.h"
+#include "writetrace.h"
 
 #include "newcpu.h"
 
@@ -2081,6 +2082,7 @@ uae_u32 memory_get_byte(uaecptr addr)
 
 void memory_put_long(uaecptr addr, uae_u32 v)
 {
+	WriteTrace_Note(addr, 4, v);
 	addrbank *ab = &get_mem_bank(addr);
 	if (!ab->baseaddr_direct_w) {
 		call_mem_put_func(ab->lput, addr, v);
@@ -2094,6 +2096,7 @@ void memory_put_long(uaecptr addr, uae_u32 v)
 }
 void memory_put_word(uaecptr addr, uae_u32 v)
 {
+	WriteTrace_Note(addr, 2, v);
 	addrbank *ab = &get_mem_bank(addr);
 	if (!ab->baseaddr_direct_w) {
 		call_mem_put_func(ab->wput, addr, v);
@@ -2107,6 +2110,7 @@ void memory_put_word(uaecptr addr, uae_u32 v)
 }
 void memory_put_byte(uaecptr addr, uae_u32 v)
 {
+	WriteTrace_Note(addr, 1, v);
 	addrbank *ab = &get_mem_bank(addr);
 	if (!ab->baseaddr_direct_w) {
 		call_mem_put_func(ab->bput, addr, v);

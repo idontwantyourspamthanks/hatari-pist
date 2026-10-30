@@ -30,6 +30,7 @@ const char DebugCpu_fileid[] = "Hatari debugcpu.c";
 #include "profile.h"
 #include "coverage.h"
 #include "reststop.h"
+#include "writetrace.h"
 #include "stMemory.h"
 #include "str.h"
 #include "symbols.h"
@@ -1498,6 +1499,11 @@ static const dbgcommand_t cpucommands[] =
 	  "reststop", "",
 	  "restore a snapshot and stop before its instruction",
 	  RestStop_Description,
+	  false },
+	{ WriteTrace_Command, WriteTrace_Match,
+	  "writetrace", "",
+	  "log writes in one RAM range",
+	  WriteTrace_Description,
 	  false },
 	{ DebugCpu_Profile, Profile_Match,
 	  "profile", "",

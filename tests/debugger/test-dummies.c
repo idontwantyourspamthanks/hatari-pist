@@ -192,6 +192,20 @@ void Coverage_Update(void) { }
 const char RestStop_Description[] = "";
 int RestStop_Command(int nArgc, char *psArgs[]) { return DEBUGGER_CMDDONE; }
 
+/* fake writetrace. The real command records stores from the CPU core. */
+#include "writetrace.h"
+const char WriteTrace_Description[] = "";
+bool WriteTrace_Active;
+int WriteTrace_Command(int nArgc, char *psArgs[]) { return DEBUGGER_CMDDONE; }
+char *WriteTrace_Match(const char *text, int state) { return NULL; }
+void WriteTrace_PushCpu(uint32_t pc) { }
+void WriteTrace_PushBlitter(void) { }
+void WriteTrace_Pop(void) { }
+void WriteTrace_ResetTags(void) { }
+void WriteTrace_NoteSlow(uint32_t addr, int width, uint32_t value) { }
+void WriteTrace_DebugEnter(void) { }
+void WriteTrace_DebugLeave(void) { }
+
 /* fake Hatari video variables */
 #include "video.h"
 int nHBL = 20;

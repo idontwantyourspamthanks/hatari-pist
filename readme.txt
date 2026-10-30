@@ -66,6 +66,12 @@ IDE what stock Hatari does not have:
   is one snapshot, not step-back.  stateload is unchanged.  Restoring that
   stop and executing the same steps again matches, including one VBL.
 
+* writetrace (a debugger command, src/debug/writetrace.c) logs writes in one
+  range with origin cpu, blitter, or unknown.  A CPU event has a PC; the
+  others do not.  A full ring keeps the oldest events and counts the rest
+  as dropped.  It does not stop the CPU.  This is not a memory-history view
+  and not a stop hook.
+
 Everything else is upstream Hatari 2.6.1, kept as close to stock as possible:
 one self-contained new file plus small hooks per addition, so that rebasing
 onto a newer upstream is a bounded job.  Two constraints are load-bearing for

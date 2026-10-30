@@ -20,6 +20,7 @@ const char STMemory_fileid[] = "Hatari stMemory.c";
 #include "vdi.h"
 #include "m68000.h"
 #include "video.h"
+#include "writetrace.h"
 
 /* STRam points to our malloc'ed buffer with the ST RAM.
  * Note that the ROM and IO memory will be handled separately. */
@@ -615,6 +616,9 @@ void	STMemory_Write ( uint32_t addr , uint32_t val , int size )
 {
 	addrbank	*pBank;
 	uint8_t		*p;
+
+	/* Debugger and other direct pokes. Not a CPU store and not the blitter. */
+	WriteTrace_Note(addr, size, val);
 
 //printf ( "mem direct write %x %x %d\n" , addr , val , size );
 	pBank = &get_mem_bank ( addr );

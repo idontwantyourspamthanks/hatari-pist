@@ -126,6 +126,7 @@ const char Blitter_fileid[] = "Hatari blitter.c";
 #include "video.h"
 #include "hatari-glue.h"
 #include "falcon/dsp.h"
+#include "writetrace.h"
 
 
 /* BLiTTER registers, incs are signed, others unsigned */
@@ -445,7 +446,11 @@ static void Blitter_WriteWord(uint32_t addr, uint16_t value)
 {
 	BlitterState.bus_word = value;
 
+	/* Tag this store here. BusMode is not a writer: a debugger poke
+	 * also runs with the CPU owning the bus. */
+	WriteTrace_PushBlitter();
 	STMemory_DMA_WriteWord ( addr ,  value );
+	WriteTrace_Pop();
 
 	BlitterState.CountBusBlitter++;
 	Blitter_AddCycles ( BLITTER_CYCLES_PER_BUS_WRITE );

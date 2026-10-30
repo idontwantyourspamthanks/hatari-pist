@@ -43,6 +43,7 @@ const char DebugUI_fileid[] = "Hatari debugui.c";
 #include "68kDisass.h"
 #include "debugInfo.h"
 #include "debugui.h"
+#include "writetrace.h"
 #include "evaluate.h"
 #include "history.h"
 #include "profile.h"
@@ -1246,6 +1247,8 @@ void DebugUI(debug_reason_t reason)
 		recursing = false;
 		return;
 	}
+	/* Close the host-time sample for the run that just stopped. */
+	WriteTrace_DebugEnter();
 	recursing = true;
 
 	History_Mark(reason);
@@ -1322,6 +1325,9 @@ void DebugUI(debug_reason_t reason)
 	DebugDsp_SetDebugging();
 
 	recursing = false;
+	/* Time the next guest run. Quit does not run it. */
+	if (!bQuitProgram)
+		WriteTrace_DebugLeave();
 }
 
 
