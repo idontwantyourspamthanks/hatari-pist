@@ -60,6 +60,11 @@ IDE what stock Hatari does not have:
   off.  The file is format "HPISTREPLAY 1" and carries a SHA-256 of this
   executable so a different build is refused.  This is not a stop hook.
 
+* reststop (a debugger command, src/debug/reststop.c) restores one snapshot
+  written by statesave and returns to the stdin debugger prompt at that
+  guest state.  The instruction at the restored PC has not executed.  This
+  is one snapshot, not step-back.  stateload is unchanged.
+
 Everything else is upstream Hatari 2.6.1, kept as close to stock as possible:
 one self-contained new file plus small hooks per addition, so that rebasing
 onto a newer upstream is a bounded job.  Two constraints are load-bearing for

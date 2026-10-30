@@ -187,6 +187,11 @@ char *Coverage_Match(const char *text, int state) { return NULL; }
 bool Coverage_IsRecording(void) { return false; }
 void Coverage_Update(void) { }
 
+/* fake reststop. The real command restores a snapshot from the CPU loop. */
+#include "reststop.h"
+const char RestStop_Description[] = "";
+int RestStop_Command(int nArgc, char *psArgs[]) { return DEBUGGER_CMDDONE; }
+
 /* fake Hatari video variables */
 #include "video.h"
 int nHBL = 20;

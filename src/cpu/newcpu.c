@@ -59,6 +59,7 @@
 #include "log.h"
 #include "debugui.h"
 #include "debugcpu.h"
+#include "reststop.h"
 #include "stMemory.h"
 #include "blitter.h"
 #include "scc.h"
@@ -5277,6 +5278,10 @@ static int do_specialties (int cycles)
 #ifdef WINUAE_FOR_HATARI
 	if (spcflags & SPCFLAG_DEBUGGER)
 		DebugCpu_Check();
+	/* reststop sets MODE_CHANGE inside this call, after spcflags was
+	 * snapshotted. Leave before another instruction runs. */
+	if (RestStop_LeaveLoop())
+		return 1;
 #endif
 
 	if (spcflags & SPCFLAG_BRK) {
@@ -7836,6 +7841,15 @@ void m68k_go (int may_quit)
 
 				currprefs.cpu_model < 68020 ? m68k_run_2_000 : m68k_run_2_020;
 #if 0
+		}
+#endif
+#ifdef WINUAE_FOR_HATARI
+		/* A reststop restore is done. Prompt before this instruction.
+		 * Another reststop, or quit, must not reach run_func. */
+		if (RestStop_EnterPrompt()) {
+			if (bQuitProgram)
+				break;
+			continue;
 		}
 #endif
 		run_func();

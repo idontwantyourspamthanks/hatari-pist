@@ -10,7 +10,7 @@ endif(ENABLE_DSP_EMU)
 add_library(Debug
 	    log.c debugui.c breakcond.c debugcpu.c debugInfo.c
 	    ${DSPDBG_C} evaluate.c history.c symbols.c vars.c
-	    profile.c profilecpu.c profiledsp.c coverage.c
+	    profile.c profilecpu.c profiledsp.c coverage.c reststop.c
 	    natfeats.c console.c 68kDisass.c remotedebug.c)
 
 target_link_libraries(Debug PRIVATE ${SDL2_LIBRARIES})

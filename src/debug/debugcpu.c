@@ -29,6 +29,7 @@ const char DebugCpu_fileid[] = "Hatari debugcpu.c";
 #include "memorySnapShot.h"
 #include "profile.h"
 #include "coverage.h"
+#include "reststop.h"
 #include "stMemory.h"
 #include "str.h"
 #include "symbols.h"
@@ -1492,6 +1493,11 @@ static const dbgcommand_t cpucommands[] =
 	  "coverage", "",
 	  "record executed ST RAM instruction addresses",
 	  Coverage_Description,
+	  false },
+	{ RestStop_Command, NULL,
+	  "reststop", "",
+	  "restore a snapshot and stop before its instruction",
+	  RestStop_Description,
 	  false },
 	{ DebugCpu_Profile, Profile_Match,
 	  "profile", "",
