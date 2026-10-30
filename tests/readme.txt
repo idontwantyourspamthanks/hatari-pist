@@ -83,6 +83,10 @@ natfeats/
 - "make test" test for Native Features emulator interface, and
    example code for different compilers / assemblers on how to use it
 
+replay/
+- "make test" records one --tos none program (frame, PC, registers and
+   scripted keys), replays it, and checks that one changed key diverges
+
 mem_end/
 - "make test" tests handling of screen at end of RAM
 

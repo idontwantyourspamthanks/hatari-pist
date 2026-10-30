@@ -53,6 +53,13 @@ IDE what stock Hatari does not have:
   addresses without disassembly (src/debug/coverage.c).  Recording does not
   enable the CPU profiler, and the profiler does not enable recording.
 
+* Guest-clock replay ("--replay-record" / "--replay", src/replay.c) records
+  scripted IKBD keys and a per-VBL trace of PC and registers for one
+  --tos none program, with no floppy.  That run enters the program in
+  supervisor mode so it can read the keyboard ACIA.  The per-instruction debugger stays
+  off.  The file is format "HPISTREPLAY 1" and carries a SHA-256 of this
+  executable so a different build is refused.  This is not a stop hook.
+
 Everything else is upstream Hatari 2.6.1, kept as close to stock as possible:
 one self-contained new file plus small hooks per addition, so that rebasing
 onto a newer upstream is a bounded job.  Two constraints are load-bearing for

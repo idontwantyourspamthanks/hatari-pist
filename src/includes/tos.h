@@ -49,6 +49,7 @@ extern uint32_t TosAddress, TosSize;
 extern bool bTosImageLoaded;
 extern bool bRamTosImage;
 extern bool bUseTos;
+extern const char *psTestPrg;
 extern unsigned int ConnectedDriveMask;
 extern int nNumDrives;
 

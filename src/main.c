@@ -18,6 +18,7 @@ const char Main_fileid[] = "Hatari main.c";
 #include "control.h"
 #include "options.h"
 #include "pistmedia.h"
+#include "replay.h"
 #include "dialog.h"
 #include "audio.h"
 #include "joy.h"
@@ -350,6 +351,8 @@ void Main_WaitOnVbl(void)
 	int64_t nDelay;
 
 	nVBLCount++;
+	/* Sample this frame before --run-vbls exits, so the last VBL is in the trace. */
+	Replay_OnVbl(nVBLs, nVBLCount, nRunVBLs);
 	if (nRunVBLs &&	nVBLCount >= nRunVBLs)
 	{
 		/* show VBLs/s */
@@ -518,6 +521,10 @@ static void Main_HandleMouseMotion(int dx, int dy)
 {
 	static int ax = 0, ay = 0;
 
+	/* Record/replay supplies keys itself. Host motion must not move the IKBD. */
+	if (Replay_IgnoresHostInput())
+		return;
+
 	/* Ignore motion when position has changed right after a reset or TOS
 	 * (especially version 4.04) might get confused and play key clicks */
 	if (bIgnoreNextMouseMotion || nVBLs < 10)
@@ -615,6 +622,17 @@ void Main_EventHandler(bool remoteDebugging)
 			/* no events -> if emulation is active or
 			 * user is quitting -> return from function.
 			 */
+			continue;
+		}
+		/* Scripted replay keys are the only guest keyboard/mouse input. */
+		if (Replay_IgnoresHostInput() &&
+		    (event.type == SDL_KEYDOWN || event.type == SDL_KEYUP ||
+		     event.type == SDL_MOUSEMOTION ||
+		     event.type == SDL_MOUSEBUTTONDOWN ||
+		     event.type == SDL_MOUSEBUTTONUP ||
+		     event.type == SDL_MOUSEWHEEL))
+		{
+			bContinueProcessing = true;
 			continue;
 		}
 		switch (event.type)
@@ -863,6 +881,7 @@ static void Main_Init(void)
 	/* done as last, needs CPU & DSP running... */
 	DebugUI_Init();
 	RemoteDebug_Init();
+	Replay_Arm();
 }
 
 
@@ -1056,6 +1075,13 @@ int main(int argc, char *argv[])
 
 	/* Check for any passed parameters */
 	if (!Opt_ParseParameters(argc, (const char * const *)argv))
+	{
+		Control_RemoveFifo();
+		Main_ErrorExit(NULL, NULL, 1);
+	}
+	/* Reseed before Configuration_Apply so a random video-timing mode
+	 * draws from the recording seed, not from time(). */
+	if (!Replay_Startup())
 	{
 		Control_RemoveFifo();
 		Main_ErrorExit(NULL, NULL, 1);

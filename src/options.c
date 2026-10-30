@@ -26,6 +26,7 @@ const char Options_fileid[] = "Hatari options.c";
 #include "console.h"
 #include "control.h"
 #include "pistmedia.h"
+#include "replay.h"
 #include "debugui.h"
 #include "file.h"
 #include "floppy.h"
@@ -216,6 +217,9 @@ enum {
 	OPT_SAVECONFIG,
 	OPT_CONTROLSOCKET,
 	OPT_PISTMEDIA,
+	OPT_REPLAY_RECORD,
+	OPT_REPLAY,
+	OPT_REPLAY_KEY,
 	OPT_CMDFIFO,
 	OPT_LOGFILE,
 	OPT_LOGLEVEL,
@@ -531,6 +535,12 @@ static const opt_t HatariOptions[] = {
 #endif
 	{ OPT_PISTMEDIA, NULL, "--pist-media",
 	  "<port>", "hatari-pist: run windowless, push frames to the IDE on this TCP port (protocol v2: input)" },
+	{ OPT_REPLAY_RECORD, NULL, "--replay-record",
+	  "<file>", "hatari-pist: record scripted keys and a VBL/PC/register trace" },
+	{ OPT_REPLAY, NULL, "--replay",
+	  "<file>", "hatari-pist: replay a recording and compare its trace" },
+	{ OPT_REPLAY_KEY, NULL, "--replay-key",
+	  "<frame:hex:down|up>", "hatari-pist: key for --replay-record, at a VBL number" },
 	{ OPT_LOGFILE, NULL, "--log-file",
 	  "<file>", "Save log output to <file> (default=stderr)" },
 	{ OPT_LOGLEVEL, NULL, "--log-level",
@@ -2281,6 +2291,27 @@ bool Opt_ParseParameters(int argc, const char * const argv[])
 			{
 				return Opt_ShowError(OPT_PISTMEDIA, argv[i], errstr);
 			}
+			break;
+
+		case OPT_REPLAY_RECORD:
+			i += 1;
+			errstr = Replay_SetRecord(argv[i]);
+			if (errstr)
+				return Opt_ShowError(OPT_REPLAY_RECORD, argv[i], errstr);
+			break;
+
+		case OPT_REPLAY:
+			i += 1;
+			errstr = Replay_SetPlay(argv[i]);
+			if (errstr)
+				return Opt_ShowError(OPT_REPLAY, argv[i], errstr);
+			break;
+
+		case OPT_REPLAY_KEY:
+			i += 1;
+			errstr = Replay_AddKey(argv[i]);
+			if (errstr)
+				return Opt_ShowError(OPT_REPLAY_KEY, argv[i], errstr);
 			break;
 
 		case OPT_CONTROLSOCKET:
