@@ -92,7 +92,9 @@ replay/
    debugger prompt, on the fixture's first instruction, and the later keys
    still stop before the selected add. A fourth stops the recording itself
    on that addq, once, before it executes, then continues; the per-VBL trace
-   matches the run that never entered the debugger.
+   matches the run that never entered the debugger. A fifth statesaves from
+   that stop, still with the breakpoint armed, and reststop returns to the
+   same unexecuted addq. The recording's trace still matches.
 
 mem_end/
 - "make test" tests handling of screen at end of RAM

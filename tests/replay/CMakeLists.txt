@@ -21,3 +21,9 @@ add_test(NAME replay-stop-during-record
                  $<TARGET_FILE:${APP_NAME}>
                  ${CMAKE_CURRENT_SOURCE_DIR}/fixture.prg)
 set_tests_properties(replay-stop-during-record PROPERTIES TIMEOUT 120)
+
+add_test(NAME replay-statesave-during-stop
+         COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/run_stop_snapshot.py
+                 $<TARGET_FILE:${APP_NAME}>
+                 ${CMAKE_CURRENT_SOURCE_DIR}/fixture.prg)
+set_tests_properties(replay-statesave-during-stop PROPERTIES TIMEOUT 120)

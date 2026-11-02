@@ -67,7 +67,8 @@ IDE what stock Hatari does not have:
   returns to the prompt before that instruction executes.  A statesave taken
   at the debugger prompt — the fixture's first instruction, supervisor set
   from that prompt — restores the same way.  A statesave taken at the stop
-  in the middle of the recording is not part of that result.  The file is format
+  in the middle of the recording, with the breakpoint left armed, restores
+  to that same unexecuted addq.  The file is format
   "HPISTREPLAY 1" and carries a SHA-256 of this
   executable so a different build is refused.  This is not a stop hook.
 
