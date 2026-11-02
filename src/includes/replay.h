@@ -19,6 +19,8 @@
 /* NULL on success. The string is a static error for Opt_ShowError. */
 extern const char *Replay_SetRecord(const char *path);
 extern const char *Replay_SetPlay(const char *path);
+extern const char *Replay_SetSnapshot(const char *path);
+extern const char *Replay_SetSnapshotAt(const char *text);
 extern const char *Replay_AddKey(const char *spec);
 
 /* After option parsing, before Configuration_Apply. Reseeds Hatari_rand
@@ -36,5 +38,9 @@ extern void Replay_OnVbl(int n_vbls, uint32_t vbl_count, uint32_t run_vbls);
 /* True while recording or replaying, so host keyboard and mouse events
  * are not a second, unsynchronised input. */
 extern bool Replay_IgnoresHostInput(void);
+
+/* Debugger command. Loads a recording's keys after reststop. */
+extern const char Replay_KeysDescription[];
+extern int Replay_KeysCommand(int nArgc, char *psArgs[]);
 
 #endif /* HATARI_REPLAY_H */

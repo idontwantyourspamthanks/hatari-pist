@@ -56,8 +56,15 @@ IDE what stock Hatari does not have:
 * Guest-clock replay ("--replay-record" / "--replay", src/replay.c) records
   scripted IKBD keys and a per-VBL trace of PC and registers for one
   --tos none program, with no floppy.  That run enters the program in
-  supervisor mode so it can read the keyboard ACIA.  The per-instruction debugger stays
-  off.  The file is format "HPISTREPLAY 1" and carries a SHA-256 of this
+  supervisor mode so it can read the keyboard ACIA.  The per-instruction debugger
+  may stay on for the whole run; one breakpoint that cannot match leaves it on
+  without entering the debugger, and that trace matches the run with it off.  A
+  stop during the recording is not part of that result.  --replay-snapshot
+  writes one statesave at a chosen vertical blank, after that frame's keys.
+  The debugger command replaykeys applies the recording's later keys.
+  reststop restores the snapshot, and a breakpoint on a later instruction
+  returns to the prompt before that instruction executes.  The file is format
+  "HPISTREPLAY 1" and carries a SHA-256 of this
   executable so a different build is refused.  This is not a stop hook.
 
 * reststop (a debugger command, src/debug/reststop.c) restores one snapshot

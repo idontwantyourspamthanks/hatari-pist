@@ -10,14 +10,23 @@
  * and registers, then replay those keys and compare the trace.
  *
  * This is not a debugger stop hook. The sample is taken from the VBL handler,
- * once per frame, with the per-instruction debugger left off. Turning that
- * debugger on (SPCFLAG_DEBUGGER) changes when the CPU is checked and is
- * recorded so a replay can refuse it. The HRDB listen socket this fork opens
- * at boot does not set that flag and does not stop the CPU.
+ * once per frame. SPCFLAG_DEBUGGER may stay set for the whole run. The replay
+ * test does that with one breakpoint that cannot match (pc = $1): the debugger
+ * is never entered, and that run's per-VBL trace matches the run with the flag
+ * clear. A change in the flag during the run is still refused. A stop in the
+ * middle of the recording is not this result. The HRDB listen socket this fork
+ * opens at boot does not set that flag and does not stop the CPU.
  *
  * Keys are applied after the sample for that frame, so frame N in the trace
- * does not yet show the key scheduled at frame N. Hatari bus-errors a
- * user-mode IO read, and fake TOS enters the program with SR $0300, so the
+ * does not yet show the key scheduled at frame N. --replay-snapshot and
+ * --replay-snapshot-at write one statesave at that VBL, after that frame's
+ * keys. The debugger command replaykeys loads those input lines and applies
+ * the ones still ahead. It does not restart the machine. reststop restores
+ * the snapshot; a breakpoint on a later instruction returns to the prompt
+ * before that instruction executes. A stop during the recording itself is
+ * not this result.
+ * Hatari bus-errors a user-mode IO read, and fake TOS enters the program
+ * with SR $0300, so the
  * one "move #$0300,sr" in that image is rewritten to SR $2300 for this run.
  * Host key, mouse, and
  * joystick events are ignored for the run: they are not on the guest clock.
@@ -50,9 +59,12 @@ const char Replay_fileid[] = "Hatari replay.c";
 
 #include "main.h"
 #include "configuration.h"
+#include "debug_priv.h"
+#include "debugui.h"
 #include "ikbd.h"
 #include "lilo.h"
 #include "m68000.h"
+#include "memorySnapShot.h"
 #include "replay.h"
 #include "stMemory.h"
 #include "tos.h"
@@ -75,7 +87,9 @@ const char Replay_fileid[] = "Hatari replay.c";
 enum {
 	MODE_OFF = 0,
 	MODE_RECORD,
-	MODE_PLAY
+	MODE_PLAY,
+	/* After reststop: inject the recording's later keys. No trace compare. */
+	MODE_RESUME
 };
 
 enum {
@@ -122,11 +136,15 @@ struct replay_key {
 static int mode;
 static bool armed;
 static bool debugger_attached;
+static bool resume_flag_ready;
 static int run_frames;
 static int trace_count;
 static int key_count;
+static int save_frame;
+static bool save_done;
 static char record_path[FILENAME_MAX];
 static char play_path[FILENAME_MAX];
+static char save_path[FILENAME_MAX];
 static char build_hex[65];
 static char program_hex[65];
 static char reject_token[32];
@@ -623,6 +641,27 @@ const char *Replay_SetPlay(const char *path)
 	return NULL;
 }
 
+const char *Replay_SetSnapshot(const char *path)
+{
+	if (!copy_path(save_path, sizeof(save_path), path))
+		return "snapshot path missing or too long";
+	return NULL;
+}
+
+const char *Replay_SetSnapshotAt(const char *text)
+{
+	char *end;
+	unsigned long n;
+
+	if (!text || !text[0])
+		return "snapshot frame missing";
+	n = strtoul(text, &end, 10);
+	if (end == text || *end != '\0' || n < 1 || n > 1000000)
+		return "snapshot frame must be >= 1";
+	save_frame = (int)n;
+	return NULL;
+}
+
 const char *Replay_AddKey(const char *spec)
 {
 	unsigned frame, code;
@@ -661,10 +700,22 @@ bool Replay_Startup(void)
 			fprintf(stderr, "replay: --replay-key needs --replay-record\n");
 			return false;
 		}
+		if (save_frame != 0 || save_path[0] != '\0') {
+			fprintf(stderr, "replay: --replay-snapshot needs --replay-record\n");
+			return false;
+		}
 		return true;
 	}
 	if (mode == MODE_PLAY && key_count != 0) {
 		fprintf(stderr, "replay: --replay-key is only valid with --replay-record\n");
+		return false;
+	}
+	if (mode == MODE_PLAY && (save_frame != 0 || save_path[0] != '\0')) {
+		fprintf(stderr, "replay: --replay-snapshot is only valid with --replay-record\n");
+		return false;
+	}
+	if (mode == MODE_RECORD && ((save_frame != 0) != (save_path[0] != '\0'))) {
+		fprintf(stderr, "replay: --replay-snapshot and --replay-snapshot-at are both required\n");
 		return false;
 	}
 	if (!sha256_self_check()) {
@@ -942,6 +993,8 @@ void Replay_Arm(void)
 	if (n < 1 || n > MAX_FRAMES)
 		reject_before_run("frames");
 	run_frames = (int)n;
+	if (save_frame != 0 && save_frame > run_frames)
+		reject_before_run("snapshot");
 
 	if (mode == MODE_RECORD) {
 		for (i = 0; i < key_count; i++) {
@@ -1010,6 +1063,21 @@ void Replay_OnVbl(int n_vbls, uint32_t vbl_count, uint32_t run_vbls)
 	if (!armed)
 		return;
 
+	if (mode == MODE_RESUME) {
+		if (!resume_flag_ready) {
+			debugger_attached = debugger_now();
+			resume_flag_ready = true;
+		} else if (debugger_now() != debugger_attached) {
+			fprintf(stderr, "replay: per-instruction debugger flag changed\n");
+			printf("replay rejected: debugger\n");
+			fflush(stdout);
+			fflush(stderr);
+			exit(1);
+		}
+		apply_keys(n_vbls);
+		return;
+	}
+
 	if (debugger_now() != debugger_attached) {
 		fprintf(stderr, "replay: per-instruction debugger flag changed\n");
 		printf("replay rejected: debugger\n");
@@ -1041,6 +1109,115 @@ void Replay_OnVbl(int n_vbls, uint32_t vbl_count, uint32_t run_vbls)
 	/* The sample above does not include this frame's keys. */
 	apply_keys(n_vbls);
 
+	/* After this frame's keys, so a later resume does not apply them again. */
+	if (mode == MODE_RECORD && save_frame == n_vbls && !save_done) {
+		FILE *fp;
+
+		save_done = true;
+		MemorySnapShot_Capture_Immediate(save_path, false);
+		fp = fopen(save_path, "rb");
+		if (!fp) {
+			fprintf(stderr, "replay: snapshot was not written\n");
+			printf("replay rejected: snapshot\n");
+			fflush(stdout);
+			fflush(stderr);
+			exit(1);
+		}
+		fclose(fp);
+	}
+
 	if (run_vbls && vbl_count >= run_vbls)
 		finish_run();
+}
+
+const char Replay_KeysDescription[] =
+	"<recording>\n"
+	"\tLoad the input lines from a recording and apply each key when\n"
+	"\tits vertical blank arrives.  Does not restart the machine and\n"
+	"\tdoes not stop it.  reststop restores an earlier snapshot from\n"
+	"\tthis recording; a breakpoint on a later instruction returns to\n"
+	"\tthis prompt before that instruction executes.\n";
+
+static const char *load_resume_keys(const char *path)
+{
+	FILE *fp;
+	char line[LINE_LEN];
+	unsigned frames, frame, code;
+	char state[8];
+	char rebuilt[64];
+	int wrote;
+
+	fp = fopen(path, "r");
+	if (!fp)
+		return "recording not found";
+	if (!read_line(fp, line, sizeof(line)) || strcmp(line, REPLAY_MAGIC) != 0) {
+		fclose(fp);
+		return "not a replay recording";
+	}
+	frames = 0;
+	key_count = 0;
+	for (;;) {
+		if (!read_line(fp, line, sizeof(line))) {
+			fclose(fp);
+			return "recording ended before its trace";
+		}
+		if (strncmp(line, "trace ", 6) == 0)
+			break;
+		if (strncmp(line, "frames ", 7) == 0) {
+			if (sscanf(line, "frames %u", &frames) != 1 || frames < 1) {
+				fclose(fp);
+				return "recording frame count is not a number";
+			}
+			continue;
+		}
+		if (strncmp(line, "input ", 6) != 0)
+			continue;
+		if (key_count >= MAX_KEYS) {
+			fclose(fp);
+			return "too many keys";
+		}
+		if (sscanf(line, "input %u %x %7s", &frame, &code, state) != 3) {
+			fclose(fp);
+			return "a key line is not a key";
+		}
+		wrote = snprintf(rebuilt, sizeof(rebuilt), "input %u %02x %s", frame, code, state);
+		if (wrote < 0 || (size_t)wrote >= sizeof(rebuilt) || strcmp(rebuilt, line) != 0
+		    || frame < 1 || (frames != 0 && frame > frames)
+		    || code < 1 || code > 0x7f
+		    || (strcmp(state, "down") != 0 && strcmp(state, "up") != 0)) {
+			fclose(fp);
+			return "a key line is not a key";
+		}
+		keys[key_count].frame = (int)frame;
+		keys[key_count].code = (int)code;
+		keys[key_count].down = (strcmp(state, "down") == 0);
+		key_count++;
+	}
+	fclose(fp);
+	if (frames == 0)
+		return "recording has no frame count";
+	return NULL;
+}
+
+int Replay_KeysCommand(int nArgc, char *psArgs[])
+{
+	const char *err;
+
+	if (nArgc != 2)
+		return DebugUI_PrintCmdHelp(psArgs[0]);
+	if (mode != MODE_OFF) {
+		fprintf(stderr, "replaykeys: a recording is already active\n");
+		return DEBUGGER_CMDDONE;
+	}
+	err = load_resume_keys(psArgs[1]);
+	if (err) {
+		fprintf(stderr, "replaykeys: %s\n", err);
+		key_count = 0;
+		return DEBUGGER_CMDDONE;
+	}
+	mode = MODE_RESUME;
+	armed = true;
+	resume_flag_ready = false;
+	fprintf(stderr, "replaykeys: %d keys\n", key_count);
+	return DEBUGGER_CMDDONE;
 }

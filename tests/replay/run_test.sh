@@ -1,6 +1,11 @@
 #!/bin/sh
 # Record one --tos none program, replay it, then replay with one key changed.
 # Exit 0 only when the matching replay agrees and the changed key diverges.
+# That run leaves the per-instruction debugger off. A second run of the same
+# fixture sets one breakpoint that cannot match (pc = $1), so SPCFLAG_DEBUGGER
+# stays set and the debugger is never entered. Both runs must agree, and one
+# changed key must still diverge. The two recordings do not have to match
+# each other: the flag changes when the CPU is checked.
 
 if [ $# -lt 2 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
 	echo "Usage: $0 <hatari> <fixture.prg>"
@@ -36,6 +41,9 @@ err="$testdir/err.txt"
 rec="$testdir/rec.txt"
 neg="$testdir/neg.txt"
 bad="$testdir/bad.txt"
+parse="$testdir/debugger.ini"
+rec_on="$testdir/rec-on.txt"
+neg_on="$testdir/neg-on.txt"
 
 remove_temp() {
 	rm -rf "$testdir"
@@ -232,11 +240,82 @@ if grep -q '^replay diverged' "$out"; then
 	fail "tampered build diverged instead of being rejected"
 fi
 
+# The per-instruction debugger stays on, and nothing stops. pc is even, so
+# pc = $1 never matches and DebugUI is not entered. The flag is sampled at
+# arm time, so the same file has to be parsed on the replay.
+printf '%s\n' 'b pc = $1' >"$parse"
+
+run_on() {
+	common --parse "$parse" "$@" >"$out" 2>"$err"
+}
+
+run_on --replay-record "$rec_on" \
+	--replay-key "${KEY_FRAME}:39:down" \
+	--replay-key 25:39:up \
+	"$fixture"
+status=$?
+if [ "$status" -ne 0 ]; then
+	fail "debugger-on record exited $status"
+fi
+if ! grep -x 'replay recorded' "$out" >/dev/null; then
+	fail "debugger-on record did not report replay recorded"
+fi
+if ! grep -x 'debugger yes' "$rec_on" >/dev/null; then
+	fail "debugger-on trace was taken with the per-instruction debugger off"
+fi
+if grep -q 'Debugger:' "$err" || grep -q 'Debugger:' "$out"; then
+	fail "debugger-on record entered the debugger"
+fi
+traces=$(grep -c '^trace ' "$rec_on")
+if [ "$traces" != "$RUN_VBLS" ]; then
+	fail "debugger-on trace count is $traces, expected $RUN_VBLS"
+fi
+
+run_on --replay "$rec_on" "$fixture"
+status=$?
+if [ "$status" -ne 0 ]; then
+	fail "debugger-on matching replay exited $status"
+fi
+if ! grep -x 'replay matched' "$out" >/dev/null; then
+	fail "debugger-on matching replay did not match"
+fi
+if grep -q '^replay diverged' "$out"; then
+	fail "debugger-on matching replay also diverged"
+fi
+
+sed "s/^input ${KEY_FRAME} 39 down\$/input ${KEY_FRAME} 1c down/" "$rec_on" >"$neg_on"
+if run_on --replay "$neg_on" "$fixture"; then
+	fail "debugger-on changed key replay exited 0"
+fi
+frame_on=$(sed -n 's/^replay diverged at frame \([0-9][0-9]*\)$/\1/p' "$out")
+if [ -z "$frame_on" ]; then
+	fail "debugger-on changed key did not diverge"
+fi
+if [ "$frame_on" -le "$KEY_FRAME" ]; then
+	fail "debugger-on diverged at frame $frame_on, which is not after the changed key at $KEY_FRAME"
+fi
+if [ "$frame_on" -gt "$RUN_VBLS" ]; then
+	fail "debugger-on diverged at frame $frame_on, past the run"
+fi
+
+# Same guest, or the flag moved it. Either is reported; only a mismatch
+# between the two debugger-on runs is a failure.
+guest_diff="no"
+awk '/^trace /{print}' "$rec" >"$testdir/trace-off.txt"
+awk '/^trace /{print}' "$rec_on" >"$testdir/trace-on.txt"
+if ! cmp -s "$testdir/trace-off.txt" "$testdir/trace-on.txt"; then
+	guest_diff="yes"
+fi
+
 echo "PASS"
 echo "format: HPISTREPLAY 1"
 echo "fixture: $fixture"
-echo "debugger attached: no"
+echo "debugger attached: no, and yes (breakpoint pc = \$1, never hit)"
 echo "negative control first frame: $frame_a"
+echo "debugger-on negative control frame: $frame_on"
+echo "debugger-on guest trace differs from debugger-off: $guest_diff"
 echo "---- recording header ----"
 awk 'BEGIN { n = 0 } /^trace / { n++; if (n > 2) next } { print }' "$rec"
+echo "---- debugger-on recording header ----"
+awk 'BEGIN { n = 0 } /^trace / { n++; if (n > 2) next } { print }' "$rec_on"
 exit 0

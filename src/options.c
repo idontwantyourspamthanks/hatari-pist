@@ -220,6 +220,8 @@ enum {
 	OPT_REPLAY_RECORD,
 	OPT_REPLAY,
 	OPT_REPLAY_KEY,
+	OPT_REPLAY_SNAPSHOT,
+	OPT_REPLAY_SNAPSHOT_AT,
 	OPT_CMDFIFO,
 	OPT_LOGFILE,
 	OPT_LOGLEVEL,
@@ -541,6 +543,10 @@ static const opt_t HatariOptions[] = {
 	  "<file>", "hatari-pist: replay a recording and compare its trace" },
 	{ OPT_REPLAY_KEY, NULL, "--replay-key",
 	  "<frame:hex:down|up>", "hatari-pist: key for --replay-record, at a VBL number" },
+	{ OPT_REPLAY_SNAPSHOT, NULL, "--replay-snapshot",
+	  "<file>", "hatari-pist: statesave path, written during --replay-record" },
+	{ OPT_REPLAY_SNAPSHOT_AT, NULL, "--replay-snapshot-at",
+	  "<frame>", "hatari-pist: VBL number for --replay-snapshot, after that frame's keys" },
 	{ OPT_LOGFILE, NULL, "--log-file",
 	  "<file>", "Save log output to <file> (default=stderr)" },
 	{ OPT_LOGLEVEL, NULL, "--log-level",
@@ -2312,6 +2318,20 @@ bool Opt_ParseParameters(int argc, const char * const argv[])
 			errstr = Replay_AddKey(argv[i]);
 			if (errstr)
 				return Opt_ShowError(OPT_REPLAY_KEY, argv[i], errstr);
+			break;
+
+		case OPT_REPLAY_SNAPSHOT:
+			i += 1;
+			errstr = Replay_SetSnapshot(argv[i]);
+			if (errstr)
+				return Opt_ShowError(OPT_REPLAY_SNAPSHOT, argv[i], errstr);
+			break;
+
+		case OPT_REPLAY_SNAPSHOT_AT:
+			i += 1;
+			errstr = Replay_SetSnapshotAt(argv[i]);
+			if (errstr)
+				return Opt_ShowError(OPT_REPLAY_SNAPSHOT_AT, argv[i], errstr);
 			break;
 
 		case OPT_CONTROLSOCKET:

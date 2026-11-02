@@ -85,7 +85,10 @@ natfeats/
 
 replay/
 - "make test" records one --tos none program (frame, PC, registers and
-   scripted keys), replays it, and checks that one changed key diverges
+   scripted keys), replays it, and checks that one changed key diverges.
+   A second test saves a snapshot mid-recording, restores it with reststop,
+   and applies the later keys up to a breakpoint on an instruction that has
+   not yet executed.
 
 mem_end/
 - "make test" tests handling of screen at end of RAM

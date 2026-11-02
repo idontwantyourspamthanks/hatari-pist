@@ -30,6 +30,7 @@ const char DebugCpu_fileid[] = "Hatari debugcpu.c";
 #include "profile.h"
 #include "coverage.h"
 #include "reststop.h"
+#include "replay.h"
 #include "writetrace.h"
 #include "paltrace.h"
 #include "stMemory.h"
@@ -1500,6 +1501,11 @@ static const dbgcommand_t cpucommands[] =
 	  "reststop", "",
 	  "restore a snapshot and stop before its instruction",
 	  RestStop_Description,
+	  false },
+	{ Replay_KeysCommand, NULL,
+	  "replaykeys", "",
+	  "apply a recording's later keys after reststop",
+	  Replay_KeysDescription,
 	  false },
 	{ WriteTrace_Command, WriteTrace_Match,
 	  "writetrace", "",
