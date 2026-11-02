@@ -39,3 +39,9 @@ add_test(NAME replay-media-mouse
                  $<TARGET_FILE:${APP_NAME}>
                  ${CMAKE_CURRENT_SOURCE_DIR}/mouse.prg)
 set_tests_properties(replay-media-mouse PROPERTIES TIMEOUT 120)
+
+add_test(NAME replay-tos-entry
+         COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/run_tos_entry.py
+                 $<TARGET_FILE:${APP_NAME}>
+                 ${CMAKE_CURRENT_SOURCE_DIR}/tosboot.prg)
+set_tests_properties(replay-tos-entry PROPERTIES TIMEOUT 360 SKIP_RETURN_CODE 77)

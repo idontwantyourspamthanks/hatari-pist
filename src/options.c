@@ -1080,6 +1080,10 @@ static bool Opt_HandleArgument(const char *path)
 		if (bUseTos)
 		{
 			INF_SetAutoStart(prgname, OPT_AUTOSTART);
+			/* GEMDOS autostart loads the program. The host path is kept
+			 * so a recording can hash that file; bUseTos means it is not
+			 * also copied to the --tos none test address. */
+			TOS_SetTestPrgName(path);
 		}
 		else
 		{

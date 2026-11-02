@@ -75,7 +75,12 @@ IDE what stock Hatari does not have:
   button state, on the vertical blank that polls it. The IKBD sends the
   packet on its own timer. Motion in the first vertical blanks is not
   logged. A fixture that reads one relative packet replays that message,
-  and a different dx diverges.  The file is format
+  and a different dx diverges.  A TOS image is still refused from reset.
+  From the debugger prompt, once the PC is outside the ROM, replayrecord
+  writes a snapshot and records the following vertical blanks.  On TOS 1.04
+  with no floppy and no GEMDOS host time, that prompt is the program's first
+  instruction, still unexecuted.  reststop returns to it, and replayplay
+  matches those blanks.  The file names the ROM by SHA-256.  The file is format
   "HPISTREPLAY 1" and carries a SHA-256 of this
   executable so a different build is refused.  This is not a stop hook.
 

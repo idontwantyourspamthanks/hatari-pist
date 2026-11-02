@@ -41,8 +41,12 @@
  * The IKBD sends them on its own timer. Motion in the first vertical
  * blanks is not logged.
  * Hatari_rand is reseeded from a constant so the time() seed in main() is
- * not an input. Real TOS, a cartridge, VDI, a floppy, and GEMDOS host
- * timestamps are refused. Those are outside this gate.
+ * not an input. A TOS image is still refused from reset: its boot does not
+ * fit in the frame cap. From the debugger prompt, once the PC is outside
+ * the ROM, replayrecord writes a snapshot and records the following
+ * vertical blanks. replayplay compares those blanks after reststop. The
+ * file names the ROM by SHA-256. A cartridge, VDI, a floppy, and GEMDOS
+ * host timestamps are still refused.
  *
  * Format 1 ("HPISTREPLAY 1") is text, one fact per line:
  *   build <sha256 of this executable>
@@ -50,7 +54,7 @@
  *   seed <decimal>
  *   machine, mem_kb, ttram_kb, cpu_*, fpu, mmu, blitter
  *   video_timing, monitor, borders, frameskips, sound, fast_forward
- *   tos none, vdi no, cartridge no, floppy no
+ *   tos none | tos <sha256 of the ROM>, vdi no, cartridge no, floppy no
  *   gemdos_hd, gemdos_boot, gemdos_hosttime, gemdos_drive
  *   program <sha256 of the PRG>
  *   frames <count>
@@ -71,6 +75,7 @@ const char Replay_fileid[] = "Hatari replay.c";
 #include "main.h"
 #include "configuration.h"
 #include "debug_priv.h"
+#include "file.h"
 #include "debugui.h"
 #include "ikbd.h"
 #include "lilo.h"
@@ -168,6 +173,7 @@ static char play_path[FILENAME_MAX];
 static char save_path[FILENAME_MAX];
 static char build_hex[65];
 static char program_hex[65];
+static char tos_hex[65];
 static char reject_token[32];
 static struct replay_key keys[MAX_KEYS];
 static struct replay_mouse mice[MAX_MOUSE];
@@ -566,7 +572,12 @@ static void identity_format(int index, char *dst, size_t n)
 		snprintf(dst, n, "fast_forward %s", yes_no(ConfigureParams.System.bFastForward));
 		break;
 	case ID_TOS:
-		snprintf(dst, n, "tos %s", bUseTos ? "image" : "none");
+		if (!bUseTos)
+			snprintf(dst, n, "tos none");
+		else if (tos_hex[0] != '\0')
+			snprintf(dst, n, "tos %s", tos_hex);
+		else
+			snprintf(dst, n, "tos image");
 		break;
 	case ID_VDI:
 		snprintf(dst, n, "vdi %s", yes_no(vdi_on()));
@@ -1289,6 +1300,201 @@ void Replay_OnVbl(int n_vbls, uint32_t vbl_count, uint32_t run_vbls)
 
 	if (run_vbls && vbl_count >= run_vbls)
 		finish_run();
+}
+
+/* The cold-boot path refuses a TOS image. This is the entry-stop path:
+ * the PC is already outside the ROM, the snapshot freezes the boot, and
+ * the next vertical blanks are the recording. */
+static const char *accept_stopped(void)
+{
+	uint32_t pc;
+
+	if (bUseLilo || !bUseTos)
+		return "tos";
+	if (!ConfigureParams.Rom.szTosImageFileName[0] ||
+	    !sha256_file(ConfigureParams.Rom.szTosImageFileName, tos_hex))
+		return "tos";
+	if (!psTestPrg || !psTestPrg[0])
+		return "program";
+	if (floppy_present())
+		return "floppy";
+	if (vdi_on())
+		return "vdi";
+	if (cartridge_present())
+		return "cartridge";
+	if (ConfigureParams.HardDisk.bGemdosHostTime)
+		return "gemdos_hosttime";
+	if (!machine_name() || !fpu_name() || !video_name() || !monitor_name())
+		return "machine";
+	if (!debugger_now())
+		return "debugger";
+	pc = (uint32_t)M68000_GetPC();
+	if (TosSize != 0 && pc >= TosAddress && pc < TosAddress + TosSize)
+		return "entry";
+	if (!hash_executable(build_hex))
+		return "executable";
+	if (!sha256_file(psTestPrg, program_hex))
+		return "program";
+	return NULL;
+}
+
+static void refuse_command(const char *why)
+{
+	fprintf(stderr, "replay: refused (%s)\n", why);
+	printf("replay rejected: %s\n", why);
+	fflush(stdout);
+	fflush(stderr);
+}
+
+static bool snapshot_beside(const char *recording)
+{
+	size_t n;
+
+	n = strlen(recording);
+	if (n + strlen(".sav") + 1 > sizeof(save_path))
+		return false;
+	memcpy(save_path, recording, n);
+	memcpy(save_path + n, ".sav", strlen(".sav") + 1);
+	return true;
+}
+
+const char Replay_RecordDescription[] =
+	"<recording> <frames>\n"
+	"\tAt this prompt, with the PC outside the ROM, write a snapshot and\n"
+	"\trecord the next <frames> vertical blanks.  The boot is not in the\n"
+	"\tfile.  A breakpoint must stay armed so the debugger flag does not\n"
+	"\tchange.  reststop of the snapshot, then replayplay, compares them.\n";
+
+int Replay_RecordCommand(int nArgc, char *psArgs[])
+{
+	const char *err;
+	char *end;
+	unsigned long frames;
+
+	if (nArgc != 3)
+		return DebugUI_PrintCmdHelp(psArgs[0]);
+	if (mode != MODE_OFF) {
+		fprintf(stderr, "replayrecord: a recording is already active\n");
+		return DEBUGGER_CMDDONE;
+	}
+	frames = strtoul(psArgs[2], &end, 10);
+	if (end == psArgs[2] || *end != '\0' || frames < 1 || frames > MAX_FRAMES) {
+		refuse_command("frames");
+		return DEBUGGER_CMDDONE;
+	}
+	err = accept_stopped();
+	if (err) {
+		refuse_command(err);
+		return DEBUGGER_CMDDONE;
+	}
+	if (!copy_path(record_path, sizeof(record_path), psArgs[1]) ||
+	    !snapshot_beside(record_path)) {
+		refuse_command("write");
+		record_path[0] = '\0';
+		return DEBUGGER_CMDDONE;
+	}
+
+	/* Freeze host sticks and the PRNG into the snapshot. Replay restores
+	 * both; it does not reseed. */
+	disable_host_joysticks();
+	Hatari_srand(REPLAY_SEED);
+	debugger_attached = true;
+	run_frames = (int)frames;
+	trace_count = 0;
+	key_count = 0;
+	mouse_count = 0;
+	save_frame = 0;
+	save_done = true;
+	MemorySnapShot_Capture_Immediate(save_path, false);
+	if (!File_Exists(save_path)) {
+		refuse_command("snapshot");
+		record_path[0] = '\0';
+		return DEBUGGER_CMDDONE;
+	}
+	mode = MODE_RECORD;
+	armed = true;
+	Main_SetRunVBLs((uint32_t)frames);
+	fprintf(stderr, "replayrecord: %lu frames\n", frames);
+	return DEBUGGER_CMDDONE;
+}
+
+const char Replay_PlayDescription[] =
+	"<recording>\n"
+	"\tCompare the following vertical blanks with a recording made by\n"
+	"\treplayrecord.  reststop the recording's snapshot first: this does\n"
+	"\tnot restore it and does not restart the machine.\n";
+
+/* The frame count is the recording's, not --run-vbls. Identity compares
+ * that line against run_frames, so the count has to be known first. */
+static const char *read_frame_count(const char *path, int *out)
+{
+	FILE *fp;
+	char line[LINE_LEN];
+	unsigned frames;
+
+	fp = fopen(path, "r");
+	if (!fp)
+		return "open";
+	frames = 0;
+	while (read_line(fp, line, sizeof(line))) {
+		if (strncmp(line, "frames ", 7) == 0) {
+			if (sscanf(line, "frames %u", &frames) != 1 || frames < 1 ||
+			    frames > MAX_FRAMES) {
+				fclose(fp);
+				return "frames";
+			}
+			break;
+		}
+		if (strncmp(line, "trace ", 6) == 0)
+			break;
+	}
+	fclose(fp);
+	if (frames == 0)
+		return "frames";
+	*out = (int)frames;
+	return NULL;
+}
+
+int Replay_PlayCommand(int nArgc, char *psArgs[])
+{
+	const char *err;
+	int frames;
+
+	if (nArgc != 2)
+		return DebugUI_PrintCmdHelp(psArgs[0]);
+	if (mode != MODE_OFF) {
+		fprintf(stderr, "replayplay: a recording is already active\n");
+		return DEBUGGER_CMDDONE;
+	}
+	err = accept_stopped();
+	if (err) {
+		refuse_command(err);
+		return DEBUGGER_CMDDONE;
+	}
+	if (!copy_path(play_path, sizeof(play_path), psArgs[1])) {
+		refuse_command("open");
+		return DEBUGGER_CMDDONE;
+	}
+	err = read_frame_count(play_path, &frames);
+	if (err) {
+		refuse_command(err);
+		play_path[0] = '\0';
+		return DEBUGGER_CMDDONE;
+	}
+	run_frames = frames;
+	debugger_attached = debugger_now();
+	err = load_recording();
+	if (err) {
+		refuse_command(err);
+		play_path[0] = '\0';
+		mode = MODE_OFF;
+		return DEBUGGER_CMDDONE;
+	}
+	mode = MODE_PLAY;
+	armed = true;
+	Main_SetRunVBLs((uint32_t)run_frames);
+	fprintf(stderr, "replayplay: %d frames\n", run_frames);
+	return DEBUGGER_CMDDONE;
 }
 
 const char Replay_KeysDescription[] =

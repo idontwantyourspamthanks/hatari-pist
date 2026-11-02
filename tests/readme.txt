@@ -100,7 +100,11 @@ replay/
    that frame, and a different scancode diverges after it. A seventh sends one
    relative mouse message the same way, stopped at vertical blank 25. The log
    stamps it on frame 26. The guest reads dx, dy and the left button, the
-   replay matches, and a different dx diverges.
+   replay matches, and a different dx diverges. An eighth boots the TOS image PiST
+   selects for an ST, with no floppy and no GEMDOS host time, and stops on the
+   program's first instruction the way PiST does. replayrecord snapshots that
+   unexecuted instruction and records the next 40 vertical blanks. reststop
+   returns to it, replayplay matches, and a different ROM hash is refused.
 
 mem_end/
 - "make test" tests handling of screen at end of RAM

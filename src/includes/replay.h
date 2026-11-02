@@ -52,6 +52,13 @@ extern void Replay_MediaKey(uint8_t code, bool down);
  * vertical blanks is dropped, as it was before recording existed. */
 extern void Replay_MediaMouse(int16_t dx, int16_t dy, uint8_t buttons);
 
+/* Debugger commands. replayrecord snapshots this prompt and records the
+ * next vertical blanks. replayplay compares them after reststop. */
+extern const char Replay_RecordDescription[];
+extern int Replay_RecordCommand(int nArgc, char *psArgs[]);
+extern const char Replay_PlayDescription[];
+extern int Replay_PlayCommand(int nArgc, char *psArgs[]);
+
 /* Debugger command. Loads a recording's keys after reststop. */
 extern const char Replay_KeysDescription[];
 extern int Replay_KeysCommand(int nArgc, char *psArgs[]);
