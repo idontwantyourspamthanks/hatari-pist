@@ -97,7 +97,10 @@ replay/
    same unexecuted addq. The recording's trace still matches. A sixth injects one
    key through the media channel while the recording is stopped at vertical
    blank 5. The log stamps it on frame 6, the trace matches --replay-key at
-   that frame, and a different scancode diverges after it.
+   that frame, and a different scancode diverges after it. A seventh sends one
+   relative mouse message the same way, stopped at vertical blank 25. The log
+   stamps it on frame 26. The guest reads dx, dy and the left button, the
+   replay matches, and a different dx diverges.
 
 mem_end/
 - "make test" tests handling of screen at end of RAM

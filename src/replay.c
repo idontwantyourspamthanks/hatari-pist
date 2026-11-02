@@ -36,8 +36,10 @@
  * SDL key, mouse, and joystick events are ignored for the run: they are
  * not on the guest clock. A media-channel key is. The screen poll runs
  * before this vertical blank is counted, so the key is queued for that
- * blank and applied with the scripted keys. A media mouse event is not
- * logged, and it is not delivered while a recording or replay is active.
+ * blank and applied with the scripted keys. A media mouse message is too:
+ * its relative deltas and button state are queued for that same blank.
+ * The IKBD sends them on its own timer. Motion in the first vertical
+ * blanks is not logged.
  * Hatari_rand is reseeded from a constant so the time() seed in main() is
  * not an input. Real TOS, a cartridge, VDI, a floppy, and GEMDOS host
  * timestamps are refused. Those are outside this gate.
@@ -53,6 +55,7 @@
  *   program <sha256 of the PRG>
  *   frames <count>
  *   input <frame> <scancode hex> <down|up>
+ *   mouse <frame> <dx> <dy> <buttons>
  *   trace <frame> pc <8 hex> sr <4 hex> d0..d7 a0..a7 <8 hex each>
  * A replay whose build line does not match this executable is refused.
  */
@@ -84,6 +87,7 @@ const char Replay_fileid[] = "Hatari replay.c";
 #define REPLAY_SEED    1u
 #define MAX_FRAMES     256
 #define MAX_KEYS       64
+#define MAX_MOUSE      64
 #define TRACE_LEN      320
 #define LINE_LEN       512
 
@@ -142,6 +146,13 @@ struct replay_key {
 	bool down;
 };
 
+struct replay_mouse {
+	int frame;
+	int dx;
+	int dy;
+	int buttons;       /* bit0 left, bit1 right */
+};
+
 static int mode;
 static bool armed;
 static bool debugger_attached;
@@ -149,6 +160,7 @@ static bool resume_flag_ready;
 static int run_frames;
 static int trace_count;
 static int key_count;
+static int mouse_count;
 static int save_frame;
 static bool save_done;
 static char record_path[FILENAME_MAX];
@@ -158,6 +170,7 @@ static char build_hex[65];
 static char program_hex[65];
 static char reject_token[32];
 static struct replay_key keys[MAX_KEYS];
+static struct replay_mouse mice[MAX_MOUSE];
 static char trace_line[MAX_FRAMES][TRACE_LEN];
 
 /* ----------------------------------------------------------------------- */
@@ -736,6 +749,64 @@ void Replay_MediaKey(uint8_t code, bool down)
 	key_count++;
 }
 
+static void deliver_mouse(int dx, int dy, int buttons)
+{
+	KeyboardProcessor.Mouse.dx += dx;
+	KeyboardProcessor.Mouse.dy += dy;
+	if (buttons & 1)
+		Keyboard.bLButtonDown |= BUTTON_MOUSE;
+	else
+		Keyboard.bLButtonDown &= ~BUTTON_MOUSE;
+	if (buttons & 2)
+		Keyboard.bRButtonDown |= BUTTON_MOUSE;
+	else
+		Keyboard.bRButtonDown &= ~BUTTON_MOUSE;
+}
+
+static void apply_mouse(int frame)
+{
+	int i;
+
+	for (i = 0; i < mouse_count; i++) {
+		if (mice[i].frame == frame)
+			deliver_mouse(mice[i].dx, mice[i].dy, mice[i].buttons);
+	}
+}
+
+void Replay_MediaMouse(int16_t dx, int16_t dy, uint8_t buttons)
+{
+	int use_dx, use_dy, use_buttons, frame;
+
+	use_buttons = (int)(buttons & 3);
+	/* Motion in the first VBLs confuses TOS. Buttons still count. */
+	if (nVBLs >= 10) {
+		use_dx = dx;
+		use_dy = dy;
+	} else {
+		use_dx = 0;
+		use_dy = 0;
+	}
+
+	if (mode == MODE_OFF || !armed) {
+		deliver_mouse(use_dx, use_dy, use_buttons);
+		return;
+	}
+	if (mode != MODE_RECORD)
+		return;
+
+	frame = nVBLs + 1;
+	if (frame < 1 || (run_frames > 0 && frame > run_frames))
+		reject_now("mouse");
+	if (mouse_count >= MAX_MOUSE)
+		reject_now("mouse");
+
+	mice[mouse_count].frame = frame;
+	mice[mouse_count].dx = use_dx;
+	mice[mouse_count].dy = use_dy;
+	mice[mouse_count].buttons = use_buttons;
+	mouse_count++;
+}
+
 bool Replay_IgnoresHostInput(void)
 {
 	return mode != MODE_OFF;
@@ -825,6 +896,34 @@ static const char *parse_input_line(const char *line)
 	return NULL;
 }
 
+static const char *parse_mouse_line(const char *line)
+{
+	int frame, dx, dy, buttons;
+	char rebuilt[80];
+	int wrote;
+
+	if (mouse_count >= MAX_MOUSE)
+		return "mouse";
+	if (sscanf(line, "mouse %d %d %d %d", &frame, &dx, &dy, &buttons) != 4)
+		return "format";
+	wrote = snprintf(rebuilt, sizeof(rebuilt), "mouse %d %d %d %d", frame, dx, dy, buttons);
+	if (wrote < 0 || (size_t)wrote >= sizeof(rebuilt) || strcmp(rebuilt, line) != 0)
+		return "format";
+	if (frame < 1 || (run_frames > 0 && frame > run_frames))
+		return "mouse";
+	if (dx < -32768 || dx > 32767 || dy < -32768 || dy > 32767)
+		return "mouse";
+	if (buttons < 0 || buttons > 3)
+		return "mouse";
+
+	mice[mouse_count].frame = frame;
+	mice[mouse_count].dx = dx;
+	mice[mouse_count].dy = dy;
+	mice[mouse_count].buttons = buttons;
+	mouse_count++;
+	return NULL;
+}
+
 static bool store_trace(const char *line)
 {
 	size_t len;
@@ -874,6 +973,7 @@ static const char *load_recording(void)
 	 * replace the (empty) command-line list. */
 	saved_keys = key_count;
 	key_count = 0;
+	mouse_count = 0;
 	trace_count = 0;
 	for (;;) {
 		if (!read_line(fp, line, sizeof(line))) {
@@ -882,7 +982,10 @@ static const char *load_recording(void)
 		}
 		if (strncmp(line, "trace ", 6) == 0)
 			break;
-		err = parse_input_line(line);
+		if (strncmp(line, "mouse ", 6) == 0)
+			err = parse_mouse_line(line);
+		else
+			err = parse_input_line(line);
 		if (err) {
 			fclose(fp);
 			return err;
@@ -938,6 +1041,14 @@ static const char *write_recording(void)
 	for (i = 0; i < key_count; i++) {
 		if (fprintf(fp, "input %d %02x %s\n", keys[i].frame, keys[i].code,
 			    keys[i].down ? "down" : "up") < 0) {
+			fclose(fp);
+			remove(record_path);
+			return "write";
+		}
+	}
+	for (i = 0; i < mouse_count; i++) {
+		if (fprintf(fp, "mouse %d %d %d %d\n", mice[i].frame, mice[i].dx,
+			    mice[i].dy, mice[i].buttons) < 0) {
 			fclose(fp);
 			remove(record_path);
 			return "write";
@@ -1123,6 +1234,7 @@ void Replay_OnVbl(int n_vbls, uint32_t vbl_count, uint32_t run_vbls)
 			exit(1);
 		}
 		apply_keys(n_vbls);
+		apply_mouse(n_vbls);
 		return;
 	}
 
@@ -1154,8 +1266,9 @@ void Replay_OnVbl(int n_vbls, uint32_t vbl_count, uint32_t run_vbls)
 	}
 	trace_count++;
 
-	/* The sample above does not include this frame's keys. */
+	/* The sample above does not include this frame's keys or mouse. */
 	apply_keys(n_vbls);
+	apply_mouse(n_vbls);
 
 	/* After this frame's keys, so a later resume does not apply them again. */
 	if (mode == MODE_RECORD && save_frame == n_vbls && !save_done) {
@@ -1180,11 +1293,11 @@ void Replay_OnVbl(int n_vbls, uint32_t vbl_count, uint32_t run_vbls)
 
 const char Replay_KeysDescription[] =
 	"<recording>\n"
-	"\tLoad the input lines from a recording and apply each key when\n"
-	"\tits vertical blank arrives.  Does not restart the machine and\n"
-	"\tdoes not stop it.  reststop restores an earlier snapshot from\n"
-	"\tthis recording; a breakpoint on a later instruction returns to\n"
-	"\tthis prompt before that instruction executes.\n";
+	"\tLoad the input lines from a recording and apply each key, and each\n"
+	"\tmouse message, when its vertical blank arrives.  Does not restart\n"
+	"\tthe machine and does not stop it.  reststop restores an earlier\n"
+	"\tsnapshot from this recording; a breakpoint on a later instruction\n"
+	"\treturns to this prompt before that instruction executes.\n";
 
 static const char *load_resume_keys(const char *path)
 {
@@ -1204,6 +1317,7 @@ static const char *load_resume_keys(const char *path)
 	}
 	frames = 0;
 	key_count = 0;
+	mouse_count = 0;
 	for (;;) {
 		if (!read_line(fp, line, sizeof(line))) {
 			fclose(fp);
@@ -1216,6 +1330,34 @@ static const char *load_resume_keys(const char *path)
 				fclose(fp);
 				return "recording frame count is not a number";
 			}
+			continue;
+		}
+		if (strncmp(line, "mouse ", 6) == 0) {
+			int frame_m, dx, dy, buttons;
+			char rebuilt_m[80];
+
+			if (mouse_count >= MAX_MOUSE) {
+				fclose(fp);
+				return "too many mouse events";
+			}
+			if (sscanf(line, "mouse %d %d %d %d", &frame_m, &dx, &dy, &buttons) != 4) {
+				fclose(fp);
+				return "a mouse line is not a mouse event";
+			}
+			wrote = snprintf(rebuilt_m, sizeof(rebuilt_m), "mouse %d %d %d %d",
+					 frame_m, dx, dy, buttons);
+			if (wrote < 0 || (size_t)wrote >= sizeof(rebuilt_m) || strcmp(rebuilt_m, line) != 0
+			    || frame_m < 1 || (frames != 0 && (unsigned)frame_m > frames)
+			    || dx < -32768 || dx > 32767 || dy < -32768 || dy > 32767
+			    || buttons < 0 || buttons > 3) {
+				fclose(fp);
+				return "a mouse line is not a mouse event";
+			}
+			mice[mouse_count].frame = frame_m;
+			mice[mouse_count].dx = dx;
+			mice[mouse_count].dy = dy;
+			mice[mouse_count].buttons = buttons;
+			mouse_count++;
 			continue;
 		}
 		if (strncmp(line, "input ", 6) != 0)
@@ -1261,6 +1403,7 @@ int Replay_KeysCommand(int nArgc, char *psArgs[])
 	if (err) {
 		fprintf(stderr, "replaykeys: %s\n", err);
 		key_count = 0;
+		mouse_count = 0;
 		return DEBUGGER_CMDDONE;
 	}
 	mode = MODE_RESUME;

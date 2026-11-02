@@ -35,8 +35,13 @@
                        ignored. Otherwise it is delivered immediately.
     IDE->Hatari MOUSE: 'M', s16 dx (LE), s16 dy (LE), u8 buttons
                        (bit0: left down, bit1: right down — absolute state,
-                       not events). Deltas feed the IKBD's relative-mouse
-                       accumulator; button state mirrors the SDL path.
+                       not events). While recording, the message is queued
+                       for the vertical blank this poll belongs to and the
+                       IKBD sends it on its own timer. While replaying, it
+                       is ignored. Otherwise the deltas feed the IKBD's
+                       relative-mouse accumulator and the button state
+                       mirrors the SDL path. Motion in the first vertical
+                       blanks is dropped.
     Hatari->IDE FRAME: u32 magic 0x46524D31, u32 w, u32 h, u32 pitch, u32 seq,
                        u32 bpp, u32 rmask, u32 gmask, u32 bmask,
                        then pitch*h bytes (h rows of the ST screen area only;
@@ -602,31 +607,9 @@ static void OnMessage(void)
 	}
 	else if (inbuf[0] == 'M')
 	{
-		/* Not in the recording. Drop it while one is active so it cannot
-		 * move the guest off the logged keys. */
-		if (Replay_IgnoresHostInput())
-			return;
-		/* relative deltas into the IKBD accumulator (the path
-		 * Main_HandleMouseMotion feeds after its display scaling; PiST
-		 * scales its side, so none happens here), buttons as state.
-		 * The SDL path's early-boot guard applies too: motion in the
-		 * first VBLs confuses TOS (main.c's bIgnoreNextMouseMotion
-		 * rationale). */
-		if (nVBLs >= 10)
-		{
-			int16_t dx = (int16_t)(inbuf[1] | (inbuf[2] << 8));
-			int16_t dy = (int16_t)(inbuf[3] | (inbuf[4] << 8));
-			KeyboardProcessor.Mouse.dx += dx;
-			KeyboardProcessor.Mouse.dy += dy;
-		}
-		if (inbuf[5] & 1)
-			Keyboard.bLButtonDown |= BUTTON_MOUSE;
-		else
-			Keyboard.bLButtonDown &= ~BUTTON_MOUSE;
-		if (inbuf[5] & 2)
-			Keyboard.bRButtonDown |= BUTTON_MOUSE;
-		else
-			Keyboard.bRButtonDown &= ~BUTTON_MOUSE;
+		int16_t dx = (int16_t)(inbuf[1] | (inbuf[2] << 8));
+		int16_t dy = (int16_t)(inbuf[3] | (inbuf[4] << 8));
+		Replay_MediaMouse(dx, dy, inbuf[5]);
 	}
 	else if (inbuf[0] == 'P' && memcmp(inbuf, "PSH1", 4) == 0)
 	{

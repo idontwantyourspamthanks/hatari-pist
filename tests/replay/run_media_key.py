@@ -117,6 +117,13 @@ class Media:
             recording.fail("media handshake failed: %s" % self.error)
         self.conn.sendall(bytes((ord("K"), code, 1 if down else 0)))
 
+    def send_mouse(self, dx, dy, buttons):
+        if not self.ready.wait(30):
+            recording.fail("media channel did not authenticate")
+        if self.error is not None:
+            recording.fail("media handshake failed: %s" % self.error)
+        self.conn.sendall(struct.pack("<BhhB", ord("M"), dx, dy, buttons))
+
 
 class Session:
     def __init__(self, hatari, prg, home, parse_path, rec, port):

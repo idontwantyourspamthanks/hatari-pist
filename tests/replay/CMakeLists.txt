@@ -33,3 +33,9 @@ add_test(NAME replay-media-key
                  $<TARGET_FILE:${APP_NAME}>
                  ${CMAKE_CURRENT_SOURCE_DIR}/fixture.prg)
 set_tests_properties(replay-media-key PROPERTIES TIMEOUT 120)
+
+add_test(NAME replay-media-mouse
+         COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/run_media_mouse.py
+                 $<TARGET_FILE:${APP_NAME}>
+                 ${CMAKE_CURRENT_SOURCE_DIR}/mouse.prg)
+set_tests_properties(replay-media-mouse PROPERTIES TIMEOUT 120)

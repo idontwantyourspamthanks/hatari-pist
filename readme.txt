@@ -71,8 +71,11 @@ IDE what stock Hatari does not have:
   to that same unexecuted addq.  A key from the media channel is logged on the
   vertical blank that polls it and applied with the scripted keys; the same
   scancode given with --replay-key at that frame produces the same trace.
-  A media mouse event is not logged, and it is not delivered during a
-  recording or a replay.  The file is format
+  A media mouse message is logged the same way: relative deltas and the
+  button state, on the vertical blank that polls it. The IKBD sends the
+  packet on its own timer. Motion in the first vertical blanks is not
+  logged. A fixture that reads one relative packet replays that message,
+  and a different dx diverges.  The file is format
   "HPISTREPLAY 1" and carries a SHA-256 of this
   executable so a different build is refused.  This is not a stop hook.
 

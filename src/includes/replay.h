@@ -45,6 +45,13 @@ extern bool Replay_IgnoresHostInput(void);
  * off, the key is delivered immediately. */
 extern void Replay_MediaKey(uint8_t code, bool down);
 
+/* A mouse message from the media channel, same poll as Replay_MediaKey.
+ * dx and dy are relative. buttons is the absolute state: bit0 left,
+ * bit1 right. Recording queues it for that blank. Playback ignores it.
+ * With replay off, it is delivered immediately. Motion in the first
+ * vertical blanks is dropped, as it was before recording existed. */
+extern void Replay_MediaMouse(int16_t dx, int16_t dy, uint8_t buttons);
+
 /* Debugger command. Loads a recording's keys after reststop. */
 extern const char Replay_KeysDescription[];
 extern int Replay_KeysCommand(int nArgc, char *psArgs[]);
