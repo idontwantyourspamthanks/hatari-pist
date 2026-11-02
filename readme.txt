@@ -58,15 +58,16 @@ IDE what stock Hatari does not have:
   --tos none program, with no floppy.  That run enters the program in
   supervisor mode so it can read the keyboard ACIA.  The per-instruction debugger
   may stay on for the whole run; one breakpoint that cannot match leaves it on
-  without entering the debugger, and that trace matches the run with it off.  A
-  stop during the recording is not part of that result.  --replay-snapshot
+  without entering the debugger, and that trace matches the run with it off.
+  Stopping once during the recording, on the fixture's spin before its addq
+  executes, then continuing, matches that trace as well.  --replay-snapshot
   writes one statesave at a chosen vertical blank, after that frame's keys.
   The debugger command replaykeys applies the recording's later keys.
   reststop restores the snapshot, and a breakpoint on a later instruction
   returns to the prompt before that instruction executes.  A statesave taken
   at the debugger prompt — the fixture's first instruction, supervisor set
-  from that prompt — restores the same way.  A stop during the recording
-  itself is not part of that result.  The file is format
+  from that prompt — restores the same way.  A statesave taken at the stop
+  in the middle of the recording is not part of that result.  The file is format
   "HPISTREPLAY 1" and carries a SHA-256 of this
   executable so a different build is refused.  This is not a stop hook.
 

@@ -13,8 +13,9 @@
  * once per frame. SPCFLAG_DEBUGGER may stay set for the whole run. The replay
  * test does that with one breakpoint that cannot match (pc = $1): the debugger
  * is never entered, and that run's per-VBL trace matches the run with the flag
- * clear. A change in the flag during the run is still refused. A stop in the
- * middle of the recording is not this result. The HRDB listen socket this fork
+ * clear. The same match holds when a breakpoint does fire: the fixture's
+ * space spin, once, with its addq not yet executed, then continue. A change
+ * in the flag during the run is still refused. The HRDB listen socket this fork
  * opens at boot does not set that flag and does not stop the CPU.
  *
  * Keys are applied after the sample for that frame, so frame N in the trace
@@ -26,8 +27,8 @@
  * before that instruction executes. A statesave taken at the debugger
  * prompt is the same kind of file: the fixture's first instruction, with
  * supervisor set from that prompt, restores and the later keys still
- * select the spin. A stop during the recording itself is
- * not this result.
+ * select the spin. A statesave taken at the stop in the middle of the
+ * recording is not this result.
  * Hatari bus-errors a user-mode IO read, and fake TOS enters the program
  * with SR $0300, so the
  * one "move #$0300,sr" in that image is rewritten to SR $2300 for this run.

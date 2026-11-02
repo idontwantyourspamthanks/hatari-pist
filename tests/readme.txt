@@ -90,7 +90,9 @@ replay/
    and applies the later keys up to a breakpoint on an instruction that has
    not yet executed. A third takes that snapshot with statesave from the
    debugger prompt, on the fixture's first instruction, and the later keys
-   still stop before the selected add.
+   still stop before the selected add. A fourth stops the recording itself
+   on that addq, once, before it executes, then continues; the per-VBL trace
+   matches the run that never entered the debugger.
 
 mem_end/
 - "make test" tests handling of screen at end of RAM
