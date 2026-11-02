@@ -9,3 +9,9 @@ add_test(NAME replay-from-snapshot
                  $<TARGET_FILE:${APP_NAME}>
                  ${CMAKE_CURRENT_SOURCE_DIR}/fixture.prg)
 set_tests_properties(replay-from-snapshot PROPERTIES TIMEOUT 120)
+
+add_test(NAME replay-from-stopped-snapshot
+         COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/run_stopped.py
+                 $<TARGET_FILE:${APP_NAME}>
+                 ${CMAKE_CURRENT_SOURCE_DIR}/fixture.prg)
+set_tests_properties(replay-from-stopped-snapshot PROPERTIES TIMEOUT 120)

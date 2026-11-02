@@ -23,7 +23,10 @@
  * keys. The debugger command replaykeys loads those input lines and applies
  * the ones still ahead. It does not restart the machine. reststop restores
  * the snapshot; a breakpoint on a later instruction returns to the prompt
- * before that instruction executes. A stop during the recording itself is
+ * before that instruction executes. A statesave taken at the debugger
+ * prompt is the same kind of file: the fixture's first instruction, with
+ * supervisor set from that prompt, restores and the later keys still
+ * select the spin. A stop during the recording itself is
  * not this result.
  * Hatari bus-errors a user-mode IO read, and fake TOS enters the program
  * with SR $0300, so the

@@ -63,7 +63,10 @@ IDE what stock Hatari does not have:
   writes one statesave at a chosen vertical blank, after that frame's keys.
   The debugger command replaykeys applies the recording's later keys.
   reststop restores the snapshot, and a breakpoint on a later instruction
-  returns to the prompt before that instruction executes.  The file is format
+  returns to the prompt before that instruction executes.  A statesave taken
+  at the debugger prompt — the fixture's first instruction, supervisor set
+  from that prompt — restores the same way.  A stop during the recording
+  itself is not part of that result.  The file is format
   "HPISTREPLAY 1" and carries a SHA-256 of this
   executable so a different build is refused.  This is not a stop hook.
 
