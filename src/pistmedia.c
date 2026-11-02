@@ -30,6 +30,9 @@
                        (bit0: video, bit1: input). Sent only after a valid
                        AUTH. Nothing is pushed until it arrives.
     IDE->Hatari KEY:   'K', u8 ST scancode, u8 down(1)/up(0).
+                       While recording, the key is queued for the vertical
+                       blank this poll belongs to. While replaying, it is
+                       ignored. Otherwise it is delivered immediately.
     IDE->Hatari MOUSE: 'M', s16 dx (LE), s16 dy (LE), u8 buttons
                        (bit0: left down, bit1: right down — absolute state,
                        not events). Deltas feed the IKBD's relative-mouse
@@ -49,6 +52,7 @@
 #include "pistmedia.h"
 #include "configuration.h"
 #include "ikbd.h"
+#include "replay.h"
 #include "audio.h"
 #include "video.h"
 #include "log.h"
@@ -594,10 +598,14 @@ static void OnMessage(void)
 {
 	if (inbuf[0] == 'K')
 	{
-		IKBD_PressSTKey(inbuf[1], inbuf[2] != 0);
+		Replay_MediaKey(inbuf[1], inbuf[2] != 0);
 	}
 	else if (inbuf[0] == 'M')
 	{
+		/* Not in the recording. Drop it while one is active so it cannot
+		 * move the guest off the logged keys. */
+		if (Replay_IgnoresHostInput())
+			return;
 		/* relative deltas into the IKBD accumulator (the path
 		 * Main_HandleMouseMotion feeds after its display scaling; PiST
 		 * scales its side, so none happens here), buttons as state.

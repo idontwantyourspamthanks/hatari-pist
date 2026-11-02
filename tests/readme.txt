@@ -94,7 +94,10 @@ replay/
    on that addq, once, before it executes, then continues; the per-VBL trace
    matches the run that never entered the debugger. A fifth statesaves from
    that stop, still with the breakpoint armed, and reststop returns to the
-   same unexecuted addq. The recording's trace still matches.
+   same unexecuted addq. The recording's trace still matches. A sixth injects one
+   key through the media channel while the recording is stopped at vertical
+   blank 5. The log stamps it on frame 6, the trace matches --replay-key at
+   that frame, and a different scancode diverges after it.
 
 mem_end/
 - "make test" tests handling of screen at end of RAM

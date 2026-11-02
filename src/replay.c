@@ -33,8 +33,11 @@
  * Hatari bus-errors a user-mode IO read, and fake TOS enters the program
  * with SR $0300, so the
  * one "move #$0300,sr" in that image is rewritten to SR $2300 for this run.
- * Host key, mouse, and
- * joystick events are ignored for the run: they are not on the guest clock.
+ * SDL key, mouse, and joystick events are ignored for the run: they are
+ * not on the guest clock. A media-channel key is. The screen poll runs
+ * before this vertical blank is counted, so the key is queued for that
+ * blank and applied with the scripted keys. A media mouse event is not
+ * logged, and it is not delivered while a recording or replay is active.
  * Hatari_rand is reseeded from a constant so the time() seed in main() is
  * not an input. Real TOS, a cartridge, VDI, a floppy, and GEMDOS host
  * timestamps are refused. Those are outside this gate.
@@ -75,6 +78,7 @@ const char Replay_fileid[] = "Hatari replay.c";
 #include "tos.h"
 #include "utils.h"
 #include "vdi.h"
+#include "video.h"
 
 #define REPLAY_MAGIC   "HPISTREPLAY 1"
 #define REPLAY_SEED    1u
@@ -691,6 +695,45 @@ const char *Replay_AddKey(const char *spec)
 	keys[key_count].down = (strcmp(state, "down") == 0);
 	key_count++;
 	return NULL;
+}
+
+static void REPLAY_NORETURN reject_now(const char *token)
+{
+	fprintf(stderr, "replay: %s\n", token);
+	printf("replay rejected: %s\n", token);
+	fflush(stdout);
+	fflush(stderr);
+	exit(1);
+}
+
+void Replay_MediaKey(uint8_t code, bool down)
+{
+	unsigned masked;
+	int frame;
+
+	/* Same delivery as a session that is not recording. */
+	if (mode == MODE_OFF || !armed) {
+		IKBD_PressSTKey(code, down);
+		return;
+	}
+	/* The file's keys are the guest input. A live key would be a second one. */
+	if (mode != MODE_RECORD)
+		return;
+
+	masked = (unsigned)code & 0x7fu;
+	if (masked < 1)
+		reject_now("keys");
+	/* Screen_Draw polls before nVBLs++ and before Replay_OnVbl. */
+	frame = nVBLs + 1;
+	if (frame < 1 || (run_frames > 0 && frame > run_frames))
+		reject_now("keys");
+	if (key_count >= MAX_KEYS)
+		reject_now("keys");
+
+	keys[key_count].frame = frame;
+	keys[key_count].code = (int)masked;
+	keys[key_count].down = down;
+	key_count++;
 }
 
 bool Replay_IgnoresHostInput(void)

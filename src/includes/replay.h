@@ -39,6 +39,12 @@ extern void Replay_OnVbl(int n_vbls, uint32_t vbl_count, uint32_t run_vbls);
  * are not a second, unsynchronised input. */
 extern bool Replay_IgnoresHostInput(void);
 
+/* A key from the media channel. Called from the screen poll, which runs
+ * before this vertical blank is counted and before its keys are applied.
+ * Recording queues it for that blank. Playback ignores it. With replay
+ * off, the key is delivered immediately. */
+extern void Replay_MediaKey(uint8_t code, bool down);
+
 /* Debugger command. Loads a recording's keys after reststop. */
 extern const char Replay_KeysDescription[];
 extern int Replay_KeysCommand(int nArgc, char *psArgs[]);

@@ -27,3 +27,9 @@ add_test(NAME replay-statesave-during-stop
                  $<TARGET_FILE:${APP_NAME}>
                  ${CMAKE_CURRENT_SOURCE_DIR}/fixture.prg)
 set_tests_properties(replay-statesave-during-stop PROPERTIES TIMEOUT 120)
+
+add_test(NAME replay-media-key
+         COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/run_media_key.py
+                 $<TARGET_FILE:${APP_NAME}>
+                 ${CMAKE_CURRENT_SOURCE_DIR}/fixture.prg)
+set_tests_properties(replay-media-key PROPERTIES TIMEOUT 120)

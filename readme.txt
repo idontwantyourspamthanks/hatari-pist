@@ -68,7 +68,11 @@ IDE what stock Hatari does not have:
   at the debugger prompt — the fixture's first instruction, supervisor set
   from that prompt — restores the same way.  A statesave taken at the stop
   in the middle of the recording, with the breakpoint left armed, restores
-  to that same unexecuted addq.  The file is format
+  to that same unexecuted addq.  A key from the media channel is logged on the
+  vertical blank that polls it and applied with the scripted keys; the same
+  scancode given with --replay-key at that frame produces the same trace.
+  A media mouse event is not logged, and it is not delivered during a
+  recording or a replay.  The file is format
   "HPISTREPLAY 1" and carries a SHA-256 of this
   executable so a different build is refused.  This is not a stop hook.
 
