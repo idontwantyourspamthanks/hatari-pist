@@ -63,4 +63,9 @@ extern int Replay_PlayCommand(int nArgc, char *psArgs[]);
 extern const char Replay_KeysDescription[];
 extern int Replay_KeysCommand(int nArgc, char *psArgs[]);
 
+/* Debugger command. Appends media keys and mouse to a file while the
+ * machine keeps running. No trace, no frame cap, no exit. */
+extern const char Replay_LogDescription[];
+extern int Replay_LogCommand(int nArgc, char *psArgs[]);
+
 #endif /* HATARI_REPLAY_H */

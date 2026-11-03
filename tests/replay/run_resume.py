@@ -303,6 +303,19 @@ def main():
             with open(other, "w", encoding="ascii") as fh:
                 fh.write("\n".join(replaced) + "\n")
             wrong = run_stop(hatari, prg, home, parse_path, other, snap, PC_OTHER)
+            # A log written while the machine is running has the same input
+            # lines and no trace. replaykeys has to accept that and still
+            # apply the key. The two runs above keep their trace lines.
+            keys_only = os.path.join(home, "keys.txt")
+            kept = [line for line in lines if line.startswith("HPISTREPLAY ")
+                    or line.startswith("input ") or line.startswith("mouse ")]
+            if not any(line.startswith("trace ") for line in lines):
+                fail("recording had no trace to strip")
+            if not any(line.startswith("input ") for line in kept):
+                fail("keys-only log kept no input")
+            with open(keys_only, "w", encoding="ascii") as fh:
+                fh.write("\n".join(kept) + "\n")
+            logged = run_stop(hatari, prg, home, parse_path, keys_only, snap, PC_SPACE)
         finally:
             port.close()
 
@@ -312,6 +325,9 @@ def main():
     if wrong["pc"] != PC_OTHER or wrong["opcode"] != OP_OTHER or wrong["d1"] != 1 or wrong["d3"] != 0:
         fail("other key is not the unexecuted addq: pc=%08X op=%04X d1=%X d3=%X insn=%s"
              % (wrong["pc"], wrong["opcode"], wrong["d1"], wrong["d3"], wrong["insn"]))
+    if logged["pc"] != PC_SPACE or logged["opcode"] != OP_SPACE or logged["d1"] != 2 or logged["d2"] != 0:
+        fail("keys-only log is not the unexecuted addq: pc=%08X op=%04X d1=%X d2=%X insn=%s"
+             % (logged["pc"], logged["opcode"], logged["d1"], logged["d2"], logged["insn"]))
     print("pass replaykeys snapshot_vbl=%d stop_pc=%08X d1=%X d2=%X insn=%s"
           % (SNAP_FRAME, space["pc"], space["d1"], space["d2"], space["insn"]))
     print("other key stop_pc=%08X d1=%X d3=%X insn=%s" % (wrong["pc"], wrong["d1"], wrong["d3"], wrong["insn"]))

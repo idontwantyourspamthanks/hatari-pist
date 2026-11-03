@@ -91,8 +91,8 @@ const char Replay_fileid[] = "Hatari replay.c";
 #define REPLAY_MAGIC   "HPISTREPLAY 1"
 #define REPLAY_SEED    1u
 #define MAX_FRAMES     256
-#define MAX_KEYS       64
-#define MAX_MOUSE      64
+#define MAX_KEYS       1024
+#define MAX_MOUSE      1024
 #define TRACE_LEN      320
 #define LINE_LEN       512
 
@@ -107,7 +107,9 @@ enum {
 	MODE_RECORD,
 	MODE_PLAY,
 	/* After reststop: inject the recording's later keys. No trace compare. */
-	MODE_RESUME
+	MODE_RESUME,
+	/* Live session: append keys and mouse, apply them, do not trace or exit. */
+	MODE_LOG
 };
 
 enum {
@@ -171,6 +173,8 @@ static bool save_done;
 static char record_path[FILENAME_MAX];
 static char play_path[FILENAME_MAX];
 static char save_path[FILENAME_MAX];
+static char log_path[FILENAME_MAX];
+static FILE *log_fp;
 static char build_hex[65];
 static char program_hex[65];
 static char tos_hex[65];
@@ -741,23 +745,37 @@ void Replay_MediaKey(uint8_t code, bool down)
 		return;
 	}
 	/* The file's keys are the guest input. A live key would be a second one. */
-	if (mode != MODE_RECORD)
+	if (mode != MODE_RECORD && mode != MODE_LOG)
 		return;
 
 	masked = (unsigned)code & 0x7fu;
-	if (masked < 1)
-		reject_now("keys");
+	if (masked < 1) {
+		if (mode == MODE_RECORD)
+			reject_now("keys");
+		return;
+	}
 	/* Screen_Draw polls before nVBLs++ and before Replay_OnVbl. */
 	frame = nVBLs + 1;
-	if (frame < 1 || (run_frames > 0 && frame > run_frames))
+	if (mode == MODE_RECORD && (frame < 1 || (run_frames > 0 && frame > run_frames)))
 		reject_now("keys");
-	if (key_count >= MAX_KEYS)
-		reject_now("keys");
+	if (key_count >= MAX_KEYS) {
+		if (mode == MODE_RECORD)
+			reject_now("keys");
+		/* A live session keeps the key. The log simply stops growing. */
+		fprintf(stderr, "replaylog: key log is full\n");
+		IKBD_PressSTKey(code, down);
+		return;
+	}
 
 	keys[key_count].frame = frame;
 	keys[key_count].code = (int)masked;
 	keys[key_count].down = down;
 	key_count++;
+	if (mode == MODE_LOG && log_fp) {
+		if (fprintf(log_fp, "input %d %02x %s\n", frame, masked,
+			    down ? "down" : "up") >= 0)
+			fflush(log_fp);
+	}
 }
 
 static void deliver_mouse(int dx, int dy, int buttons)
@@ -802,20 +820,30 @@ void Replay_MediaMouse(int16_t dx, int16_t dy, uint8_t buttons)
 		deliver_mouse(use_dx, use_dy, use_buttons);
 		return;
 	}
-	if (mode != MODE_RECORD)
+	if (mode != MODE_RECORD && mode != MODE_LOG)
 		return;
 
 	frame = nVBLs + 1;
-	if (frame < 1 || (run_frames > 0 && frame > run_frames))
+	if (mode == MODE_RECORD && (frame < 1 || (run_frames > 0 && frame > run_frames)))
 		reject_now("mouse");
-	if (mouse_count >= MAX_MOUSE)
-		reject_now("mouse");
+	if (mouse_count >= MAX_MOUSE) {
+		if (mode == MODE_RECORD)
+			reject_now("mouse");
+		fprintf(stderr, "replaylog: mouse log is full\n");
+		deliver_mouse(use_dx, use_dy, use_buttons);
+		return;
+	}
 
 	mice[mouse_count].frame = frame;
 	mice[mouse_count].dx = use_dx;
 	mice[mouse_count].dy = use_dy;
 	mice[mouse_count].buttons = use_buttons;
 	mouse_count++;
+	if (mode == MODE_LOG && log_fp) {
+		if (fprintf(log_fp, "mouse %d %d %d %d\n", frame, use_dx, use_dy,
+			    use_buttons) >= 0)
+			fflush(log_fp);
+	}
 }
 
 bool Replay_IgnoresHostInput(void)
@@ -1233,6 +1261,15 @@ void Replay_OnVbl(int n_vbls, uint32_t vbl_count, uint32_t run_vbls)
 	if (!armed)
 		return;
 
+	/* A live log applies the keys it just queued and keeps running. The
+	 * debugger flag changes whenever a breakpoint is armed; that must not
+	 * end the session. */
+	if (mode == MODE_LOG) {
+		apply_keys(n_vbls);
+		apply_mouse(n_vbls);
+		return;
+	}
+
 	if (mode == MODE_RESUME) {
 		if (!resume_flag_ready) {
 			debugger_attached = debugger_now();
@@ -1526,8 +1563,11 @@ static const char *load_resume_keys(const char *path)
 	mouse_count = 0;
 	for (;;) {
 		if (!read_line(fp, line, sizeof(line))) {
+			/* A live log has inputs and no trace line. A recording that
+			 * does contain a trace still has to carry a frame count,
+			 * checked once that line has been seen. */
 			fclose(fp);
-			return "recording ended before its trace";
+			return NULL;
 		}
 		if (strncmp(line, "trace ", 6) == 0)
 			break;
@@ -1612,9 +1652,88 @@ int Replay_KeysCommand(int nArgc, char *psArgs[])
 		mouse_count = 0;
 		return DEBUGGER_CMDDONE;
 	}
+	/* Nothing to apply. Leaving the resume mode armed would exit the
+	 * process the next time a breakpoint changed the debugger flag. */
+	if (key_count == 0 && mouse_count == 0) {
+		fprintf(stderr, "replaykeys: 0 keys\n");
+		return DEBUGGER_CMDDONE;
+	}
 	mode = MODE_RESUME;
 	armed = true;
 	resume_flag_ready = false;
 	fprintf(stderr, "replaykeys: %d keys\n", key_count);
+	return DEBUGGER_CMDDONE;
+}
+
+const char Replay_LogDescription[] =
+	"<file> | off\n"
+	"\tAppend media keys and mouse to <file> from this prompt on.  The\n"
+	"\tfile has no trace and the run does not end.  off closes it so\n"
+	"\treplaykeys can load it.  After replaykeys, the same <file> resumes\n"
+	"\tthe log without dropping the keys already loaded.\n";
+
+static void close_log(void)
+{
+	if (log_fp) {
+		fclose(log_fp);
+		log_fp = NULL;
+	}
+}
+
+int Replay_LogCommand(int nArgc, char *psArgs[])
+{
+	if (nArgc != 2)
+		return DebugUI_PrintCmdHelp(psArgs[0]);
+	if (strcmp(psArgs[1], "off") == 0) {
+		if (mode != MODE_LOG) {
+			fprintf(stderr, "replaylog: not logging\n");
+			return DEBUGGER_CMDDONE;
+		}
+		close_log();
+		mode = MODE_OFF;
+		armed = false;
+		fprintf(stderr, "replaylog: off\n");
+		return DEBUGGER_CMDDONE;
+	}
+	if (mode == MODE_LOG) {
+		fprintf(stderr, "replaylog: a recording is already active\n");
+		return DEBUGGER_CMDDONE;
+	}
+	if (mode == MODE_RECORD || mode == MODE_PLAY) {
+		fprintf(stderr, "replaylog: a recording is already active\n");
+		return DEBUGGER_CMDDONE;
+	}
+	if (!copy_path(log_path, sizeof(log_path), psArgs[1])) {
+		fprintf(stderr, "replaylog: path missing or too long\n");
+		return DEBUGGER_CMDDONE;
+	}
+	if (mode == MODE_RESUME) {
+		/* The loaded keys stay. New events append. */
+		log_fp = fopen(log_path, "a");
+		if (!log_fp) {
+			fprintf(stderr, "replaylog: cannot open %s\n", log_path);
+			return DEBUGGER_CMDDONE;
+		}
+		mode = MODE_LOG;
+		armed = true;
+		fprintf(stderr, "replaylog: on\n");
+		return DEBUGGER_CMDDONE;
+	}
+	close_log();
+	log_fp = fopen(log_path, "w");
+	if (!log_fp) {
+		fprintf(stderr, "replaylog: cannot open %s\n", log_path);
+		return DEBUGGER_CMDDONE;
+	}
+	if (fprintf(log_fp, "%s\n", REPLAY_MAGIC) < 0 || fflush(log_fp) != 0) {
+		close_log();
+		fprintf(stderr, "replaylog: cannot write %s\n", log_path);
+		return DEBUGGER_CMDDONE;
+	}
+	key_count = 0;
+	mouse_count = 0;
+	mode = MODE_LOG;
+	armed = true;
+	fprintf(stderr, "replaylog: on\n");
 	return DEBUGGER_CMDDONE;
 }
