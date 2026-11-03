@@ -187,6 +187,17 @@ char *Coverage_Match(const char *text, int state) { return NULL; }
 bool Coverage_IsRecording(void) { return false; }
 void Coverage_Update(void) { }
 
+/* fake replay commands. The real ones drive the guest-clock recorder. */
+#include "replay.h"
+const char Replay_RecordDescription[] = "";
+int Replay_RecordCommand(int nArgc, char *psArgs[]) { return DEBUGGER_CMDDONE; }
+const char Replay_PlayDescription[] = "";
+int Replay_PlayCommand(int nArgc, char *psArgs[]) { return DEBUGGER_CMDDONE; }
+const char Replay_KeysDescription[] = "";
+int Replay_KeysCommand(int nArgc, char *psArgs[]) { return DEBUGGER_CMDDONE; }
+const char Replay_LogDescription[] = "";
+int Replay_LogCommand(int nArgc, char *psArgs[]) { return DEBUGGER_CMDDONE; }
+
 /* fake reststop. The real command restores a snapshot from the CPU loop. */
 #include "reststop.h"
 const char RestStop_Description[] = "";
