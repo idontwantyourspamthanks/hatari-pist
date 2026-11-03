@@ -206,6 +206,16 @@ void WriteTrace_NoteSlow(uint32_t addr, int width, uint32_t value) { }
 void WriteTrace_DebugEnter(void) { }
 void WriteTrace_DebugLeave(void) { }
 
+/* fake readtrace. The real command records CPU data reads. */
+#include "readtrace.h"
+const char ReadTrace_Description[] = "";
+bool ReadTrace_Active;
+int ReadTrace_Command(int nArgc, char *psArgs[]) { return DEBUGGER_CMDDONE; }
+char *ReadTrace_Match(const char *text, int state) { return NULL; }
+void ReadTrace_NoteSlow(uint32_t addr, int width, uint32_t value, uint32_t pc) { }
+void ReadTrace_DebugEnter(void) { }
+void ReadTrace_DebugLeave(void) { }
+
 /* fake paltrace. The real command records palette writes from the shifter. */
 #include "paltrace.h"
 const char PalTrace_Description[] = "";

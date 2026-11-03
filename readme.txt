@@ -96,6 +96,11 @@ IDE what stock Hatari does not have:
   as dropped.  It does not stop the CPU.  This is not a memory-history view
   and not a stop hook.
 
+* readtrace (a debugger command, src/debug/readtrace.c) logs CPU data reads
+  in one range.  Each event has the instruction's PC.  Instruction fetches
+  are not reads.  A full ring keeps the oldest events and counts the rest
+  as dropped.  It does not stop the CPU.
+
 * paltrace (a debugger command, src/debug/paltrace.c) records each shifter
   palette write at Video_ColorReg_WriteWord with the PC, register, masked
   color, VBL, HBL, and position on that line.  The line comes from the

@@ -61,6 +61,7 @@
 #include "debugcpu.h"
 #include "reststop.h"
 #include "writetrace.h"
+#include "readtrace.h"
 #include "stMemory.h"
 #include "blitter.h"
 #include "scc.h"
@@ -9175,6 +9176,7 @@ uae_u32 mem_access_delay_word_read (uaecptr addr)
 	regs.db = v;
 	regs.read_buffer = v;
 	if ( BlitterPhase )	Blitter_HOG_CPU_mem_access_after ( 1 );		// WINUAE_FOR_HATARI
+	ReadTrace_Note(addr, 2, v, regs.instruction_pc);
 	return v;
 }
 uae_u32 mem_access_delay_wordi_read (uaecptr addr)
@@ -9228,6 +9230,7 @@ uae_u32 mem_access_delay_byte_read (uaecptr addr)
 	regs.db = (v << 8) | v;
 	regs.read_buffer = v;
 	if ( BlitterPhase )	Blitter_HOG_CPU_mem_access_after ( 1 );		// WINUAE_FOR_HATARI
+	ReadTrace_Note(addr, 1, v, regs.instruction_pc);
 	return v;
 }
 void mem_access_delay_byte_write (uaecptr addr, uae_u32 v)

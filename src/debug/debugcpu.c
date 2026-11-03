@@ -32,6 +32,7 @@ const char DebugCpu_fileid[] = "Hatari debugcpu.c";
 #include "reststop.h"
 #include "replay.h"
 #include "writetrace.h"
+#include "readtrace.h"
 #include "paltrace.h"
 #include "stMemory.h"
 #include "str.h"
@@ -1526,6 +1527,11 @@ static const dbgcommand_t cpucommands[] =
 	  "writetrace", "",
 	  "log writes in one RAM range",
 	  WriteTrace_Description,
+	  false },
+	{ ReadTrace_Command, ReadTrace_Match,
+	  "readtrace", "",
+	  "log CPU data reads in one RAM range",
+	  ReadTrace_Description,
 	  false },
 	{ PalTrace_Command, PalTrace_Match,
 	  "paltrace", "",
